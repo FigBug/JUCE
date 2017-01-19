@@ -30,6 +30,33 @@
 
 
 //==============================================================================
+class PluginHolder : public Component
+{
+public:
+    PluginHolder (Component* child_, uint32 nodeId_) : child (child_), nodeId (nodeId_)
+    {
+        setSize (100, 100);
+        addAndMakeVisible (child);
+    }   
+    
+    void resized() override
+    {
+        Rectangle<int> r = getLocalBounds();
+        
+        child->setBounds (r.withSizeKeepingCentre (child->getWidth(), child->getHeight()));
+    }
+    
+    void mouseUp (const MouseEvent& e) override
+    {
+        if (e.getNumberOfClicks() >= 2)
+            PluginWindow::closeCurrentlyOpenWindowsFor (nodeId);
+    }
+    
+    ScopedPointer<Component> child;
+    uint32 nodeId;
+};
+
+//==============================================================================
 class PluginWindow;
 static Array <PluginWindow*> activePluginWindows;
 
@@ -37,7 +64,7 @@ PluginWindow::PluginWindow (Component* const pluginEditor,
                             AudioProcessorGraph::Node* const o,
                             WindowFormatType t,
                             AudioProcessorGraph& audioGraph)
-    : DocumentWindow (pluginEditor->getName(), Colours::lightblue,
+    : DocumentWindow (pluginEditor->getName(), Colours::black,
                       DocumentWindow::minimiseButton | DocumentWindow::closeButton),
       graph (audioGraph),
       owner (o),
@@ -45,7 +72,7 @@ PluginWindow::PluginWindow (Component* const pluginEditor,
 {
     setSize (400, 300);
 
-    setContentOwned (pluginEditor, true);
+    setContentOwned (new PluginHolder(pluginEditor, owner->nodeId), false);
 
     setTopLeftPosition (owner->properties.getWithDefault (getLastXProp (type), Random::getSystemRandom().nextInt (500)),
                         owner->properties.getWithDefault (getLastYProp (type), Random::getSystemRandom().nextInt (500)));
@@ -55,6 +82,8 @@ PluginWindow::PluginWindow (Component* const pluginEditor,
     setVisible (true);
 
     activePluginWindows.add (this);
+    
+    Desktop::getInstance().setKioskModeComponent (this);
 }
 
 void PluginWindow::closeCurrentlyOpenWindowsFor (const uint32 nodeId)
@@ -201,6 +230,8 @@ PluginWindow* PluginWindow::getWindowFor (AudioProcessorGraph::Node* const node,
 
 PluginWindow::~PluginWindow()
 {
+    Desktop::getInstance().setKioskModeComponent (nullptr);
+    
     activePluginWindows.removeFirstMatchingValue (this);
     clearContentComponent();
 }
