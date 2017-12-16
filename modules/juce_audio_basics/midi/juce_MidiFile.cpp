@@ -2,31 +2,26 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2016 - ROLI Ltd.
+   Copyright (c) 2017 - ROLI Ltd.
 
-   Permission is granted to use this software under the terms of the ISC license
-   http://www.isc.org/downloads/software-support-policy/isc-license/
+   JUCE is an open source library subject to commercial or open-source
+   licensing.
 
-   Permission to use, copy, modify, and/or distribute this software for any
-   purpose with or without fee is hereby granted, provided that the above
-   copyright notice and this permission notice appear in all copies.
+   The code included in this file is provided under the terms of the ISC license
+   http://www.isc.org/downloads/software-support-policy/isc-license. Permission
+   To use, copy, modify, and/or distribute this software for any purpose with or
+   without fee is hereby granted provided that the above copyright notice and
+   this permission notice appear in all copies.
 
-   THE SOFTWARE IS PROVIDED "AS IS" AND ISC DISCLAIMS ALL WARRANTIES WITH REGARD
-   TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
-   FITNESS. IN NO EVENT SHALL ISC BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT,
-   OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF
-   USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
-   TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
-   OF THIS SOFTWARE.
-
-   -----------------------------------------------------------------------------
-
-   To release a closed-source product which uses other parts of JUCE not
-   licensed under the ISC terms, commercial licenses are available: visit
-   www.juce.com for more information.
+   JUCE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY, AND ALL WARRANTIES, WHETHER
+   EXPRESSED OR IMPLIED, INCLUDING MERCHANTABILITY AND FITNESS FOR PURPOSE, ARE
+   DISCLAIMED.
 
   ==============================================================================
 */
+
+namespace juce
+{
 
 namespace MidiFileHelpers
 {
@@ -135,23 +130,6 @@ namespace MidiFileHelpers
 
         return correctedTime + (time - lastTime) * secsPerTick;
     }
-
-    // a comparator that puts all the note-offs before note-ons that have the same time
-    struct Sorter
-    {
-        static int compareElements (const MidiMessageSequence::MidiEventHolder* const first,
-                                    const MidiMessageSequence::MidiEventHolder* const second) noexcept
-        {
-            const double diff = (first->message.getTimeStamp() - second->message.getTimeStamp());
-
-            if (diff > 0) return 1;
-            if (diff < 0) return -1;
-            if (first->message.isNoteOff() && second->message.isNoteOn())   return -1;
-            if (first->message.isNoteOn()  && second->message.isNoteOff())  return 1;
-
-            return 0;
-        }
-    };
 
     template <typename MethodType>
     static void findAllMatchingEvents (const OwnedArray<MidiMessageSequence>& tracks,
@@ -340,9 +318,19 @@ void MidiFile::readNextTrack (const uint8* data, int size)
             lastStatusByte = firstByte;
     }
 
-    // use a sort that puts all the note-offs before note-ons that have the same time
-    MidiFileHelpers::Sorter sorter;
-    result.list.sort (sorter, true);
+    // sort so that we put all the note-offs before note-ons that have the same time
+    std::stable_sort (result.list.begin(), result.list.end(),
+                      [] (const MidiMessageSequence::MidiEventHolder* a,
+                          const MidiMessageSequence::MidiEventHolder* b)
+    {
+        auto t1 = a->message.getTimeStamp();
+        auto t2 = b->message.getTimeStamp();
+
+        if (t1 < t2)  return true;
+        if (t2 < t1)  return false;
+
+        return a->message.isNoteOff() && b->message.isNoteOn();
+    });
 
     addTrack (result);
     tracks.getLast()->updateMatchedPairs();
@@ -451,3 +439,5 @@ bool MidiFile::writeTrack (OutputStream& mainOut, const int trackNum)
 
     return true;
 }
+
+} // namespace juce

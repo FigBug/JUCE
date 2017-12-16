@@ -2,22 +2,24 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2015 - ROLI Ltd.
+   Copyright (c) 2017 - ROLI Ltd.
 
-   Permission is granted to use this software under the terms of either:
-   a) the GPL v2 (or any later version)
-   b) the Affero GPL v3
+   JUCE is an open source library subject to commercial or open-source
+   licensing.
 
-   Details of these licenses can be found at: www.gnu.org/licenses
+   By using JUCE, you agree to the terms of both the JUCE 5 End-User License
+   Agreement and JUCE 5 Privacy Policy (both updated and effective as of the
+   27th April 2017).
 
-   JUCE is distributed in the hope that it will be useful, but WITHOUT ANY
-   WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
-   A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+   End User License Agreement: www.juce.com/juce-5-licence
+   Privacy Policy: www.juce.com/juce-5-privacy-policy
 
-   ------------------------------------------------------------------------------
+   Or: You may also use this code under the terms of the GPL v3 (see
+   www.gnu.org/licenses).
 
-   To release a closed-source product which uses JUCE, commercial licenses are
-   available: visit www.juce.com for more information.
+   JUCE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY, AND ALL WARRANTIES, WHETHER
+   EXPRESSED OR IMPLIED, INCLUDING MERCHANTABILITY AND FITNESS FOR PURPOSE, ARE
+   DISCLAIMED.
 
   ==============================================================================
 */
@@ -104,6 +106,9 @@ public:
         loadWithPreviewChooser,
         directoryChooser,
         saveChooser,
+        shareText,
+        shareFile,
+        shareImage,
         numDialogs
     };
 
@@ -128,7 +133,10 @@ public:
             "'Load' File Browser",
             "'Load' File Browser With Image Preview",
             "'Choose Directory' File Browser",
-            "'Save' File Browser"
+            "'Save' File Browser",
+            "Share Text",
+            "Share Files",
+            "Share Images"
         };
 
         // warn in case we add any windows
@@ -156,7 +164,7 @@ public:
     //==============================================================================
     void paint (Graphics& g) override
     {
-        fillStandardDemoBackground (g);
+        g.fillAll (getUIColourIfAvailable (LookAndFeel_V4::ColourScheme::UIColour::windowBackground));
     }
 
     void resized() override
@@ -264,81 +272,182 @@ private:
         }
         else if (type >= loadChooser && type <= saveChooser)
         {
-           #if JUCE_MODAL_LOOPS_PERMITTED
             const bool useNativeVersion = nativeButton.getToggleState();
 
             if (type == loadChooser)
             {
-                FileChooser fc ("Choose a file to open...",
-                                File::getCurrentWorkingDirectory(),
-                                "*",
-                                useNativeVersion);
+                fc = new FileChooser ("Choose a file to open...",
+                                      File::getCurrentWorkingDirectory(),
+                                      "*",
+                                      useNativeVersion);
 
-                if (fc.browseForMultipleFilesToOpen())
-                {
-                    String chosen;
-                    for (int i = 0; i < fc.getResults().size(); ++i)
-                        chosen << fc.getResults().getReference(i).getFullPathName() << "\n";
+                fc->launchAsync (FileBrowserComponent::canSelectMultipleItems | FileBrowserComponent::openMode
+                                     | FileBrowserComponent::canSelectFiles,
+                                 [] (const FileChooser& chooser)
+                                 {
+                                     String chosen;
+                                     auto results = chooser.getURLResults();
 
-                    AlertWindow::showMessageBoxAsync (AlertWindow::InfoIcon,
-                                                      "File Chooser...",
-                                                      "You picked: " + chosen);
-                }
+                                     for (auto result : results)
+                                         chosen << (result.isLocalFile() ? result.getLocalFile().getFullPathName() : result.toString (false)) << "\n";
+
+                                     AlertWindow::showMessageBoxAsync (AlertWindow::InfoIcon,
+                                                                       "File Chooser...",
+                                                                       "You picked: " + chosen);
+                                 });
             }
             else if (type == loadWithPreviewChooser)
             {
-                ImagePreviewComponent imagePreview;
                 imagePreview.setSize (200, 200);
 
-                FileChooser fc ("Choose an image to open...",
-                                File::getSpecialLocation (File::userPicturesDirectory),
-                                "*.jpg;*.jpeg;*.png;*.gif",
-                                useNativeVersion);
+                fc = new FileChooser ("Choose an image to open...",
+                                      File::getCurrentWorkingDirectory(),
+                                      "*.jpg;*.jpeg;*.png;*.gif",
+                                      useNativeVersion);
 
-                if (fc.browseForMultipleFilesToOpen (&imagePreview))
-                {
-                    String chosen;
-                    for (int i = 0; i < fc.getResults().size(); ++i)
-                        chosen << fc.getResults().getReference (i).getFullPathName() << "\n";
+                fc->launchAsync (FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles
+                                    | FileBrowserComponent::canSelectMultipleItems,
+                                 [] (const FileChooser& chooser)
+                                 {
+                                     String chosen;
+                                     auto results = chooser.getURLResults();
 
-                    AlertWindow::showMessageBoxAsync (AlertWindow::InfoIcon,
-                                                      "File Chooser...",
-                                                      "You picked: " + chosen);
-                }
+                                     for (auto result : results)
+                                         chosen << (result.isLocalFile() ? result.getLocalFile().getFullPathName() : result.toString (false)) << "\n";
+
+                                     AlertWindow::showMessageBoxAsync (AlertWindow::InfoIcon,
+                                                                       "File Chooser...",
+                                                                       "You picked: " + chosen);
+                                 },
+                                 &imagePreview);
             }
             else if (type == saveChooser)
             {
-                FileChooser fc ("Choose a file to save...",
-                                File::getCurrentWorkingDirectory(),
-                                "*",
-                                useNativeVersion);
+                File fileToSave = File::createTempFile ("saveChooserDemo");
 
-                if (fc.browseForFileToSave (true))
+                if (fileToSave.createDirectory().wasOk())
                 {
-                    File chosenFile = fc.getResult();
-
-                    AlertWindow::showMessageBoxAsync (AlertWindow::InfoIcon,
-                                                      "File Chooser...",
-                                                      "You picked: " + chosenFile.getFullPathName());
+                    fileToSave = fileToSave.getChildFile ("JUCE.png");
+                    fileToSave.replaceWithData (BinaryData::juce_icon_png, BinaryData::juce_icon_pngSize);
                 }
+
+                fc = new FileChooser ("Choose a file to save...",
+                                      File::getCurrentWorkingDirectory().getChildFile (fileToSave.getFileName()),
+                                      "*",
+                                      useNativeVersion);
+
+                fc->launchAsync (FileBrowserComponent::saveMode | FileBrowserComponent::canSelectFiles,
+                                 [fileToSave] (const FileChooser& chooser)
+                                 {
+                                     auto result = chooser.getURLResult();
+                                     auto name = result.isEmpty() ? String()
+                                                                  : (result.isLocalFile() ? result.getLocalFile().getFullPathName()
+                                                                                          : result.toString (true));
+
+                                     // Android and iOS file choosers will create placeholder files for chosen
+                                     // paths, so we may as well write into those files.
+                                   #if JUCE_ANDROID || JUCE_IOS
+                                     if (! result.isEmpty())
+                                     {
+                                         ScopedPointer<InputStream> wi (fileToSave.createInputStream());
+                                         ScopedPointer<OutputStream> wo (result.createOutputStream());
+
+                                         if (wi != nullptr && wo != nullptr)
+                                         {
+                                             auto numWritten = wo->writeFromInputStream (*wi, -1);
+                                             jassert (numWritten > 0);
+                                             ignoreUnused (numWritten);
+                                             wo->flush();
+                                         }
+                                     }
+                                   #endif
+
+                                     AlertWindow::showMessageBoxAsync (AlertWindow::InfoIcon,
+                                                                       "File Chooser...",
+                                                                       "You picked: " + name);
+                                 });
             }
             else if (type == directoryChooser)
             {
-                FileChooser fc ("Choose a directory...",
-                                File::getCurrentWorkingDirectory(),
-                                "*",
-                                useNativeVersion);
+                fc = new FileChooser ("Choose a directory...",
+                                      File::getCurrentWorkingDirectory(),
+                                      "*",
+                                      useNativeVersion);
 
-                if (fc.browseForDirectory())
+                fc->launchAsync (FileBrowserComponent::openMode | FileBrowserComponent::canSelectDirectories,
+                                 [] (const FileChooser& chooser)
+                                 {
+                                     auto result = chooser.getURLResult();
+                                     auto name = result.isLocalFile() ? result.getLocalFile().getFullPathName()
+                                                                      : result.toString (true);
+
+                                     AlertWindow::showMessageBoxAsync (AlertWindow::InfoIcon,
+                                                                       "File Chooser...",
+                                                                       "You picked: " + name);
+                                 });
+            }
+        }
+        else if (type == shareText)
+        {
+            ContentSharer::getInstance()->shareText ("I love JUCE!",
+                                                     [] (bool success, const String& error)
                 {
-                    File chosenDirectory = fc.getResult();
+                    String resultString = success ? "success" : ("failure\n (error: " + error + ")");
 
                     AlertWindow::showMessageBoxAsync (AlertWindow::InfoIcon,
-                                                      "File Chooser...",
-                                                      "You picked: " + chosenDirectory.getFullPathName());
-                }
+                                                      "Sharing Text Result",
+                                                      "Sharing text finished\nwith " + resultString);
+                });
+        }
+        else if (type == shareFile)
+        {
+            File fileToSave = File::createTempFile ("DialogsDemoSharingTest");
+
+            if (fileToSave.createDirectory().wasOk())
+            {
+                fileToSave = fileToSave.getChildFile ("SharingDemoFile.txt");
+                fileToSave.replaceWithText ("Make it fast!");
+
+                Array<URL> urls;
+                urls.add (URL (fileToSave));
+
+                ContentSharer::getInstance()->shareFiles (urls,
+                    [] (bool success, const String& error)
+                    {
+                        String resultString = success ? "success" : ("failure\n (error: " + error + ")");
+
+                        AlertWindow::showMessageBoxAsync (AlertWindow::InfoIcon,
+                                                          "Sharing Files Result",
+                                                          "Sharing files finished\nwith " + resultString);
+                    });
+
             }
-           #endif
+        }
+        else if (type == shareImage)
+        {
+            Image myImage = ImageCache::getFromMemory (BinaryData::juce_icon_png,
+                                                       BinaryData::juce_icon_pngSize);
+
+            Image myImage2 (Image::RGB, 500, 500, true);
+            Graphics g (myImage2);
+            g.setColour (Colours::green);
+            ColourGradient gradient (Colours::yellow, 170, 170, Colours::cyan, 170, 20, true);
+            g.setGradientFill (gradient);
+            g.fillEllipse (20, 20, 300, 300);
+
+            Array<Image> images;
+            images.add (myImage);
+            images.add (myImage2);
+
+            ContentSharer::getInstance()->shareImages (images,
+                [] (bool success, const String& error)
+                {
+                    String resultString = success ? "success" : ("failure\n (error: " + error + ")");
+
+                    AlertWindow::showMessageBoxAsync (AlertWindow::InfoIcon,
+                                                      "Sharing Images Result",
+                                                      "Sharing images finished\nwith " + resultString);
+                });
         }
     }
 
@@ -355,6 +464,9 @@ private:
             if (button == windowButtons.getUnchecked (i))
                 return showWindow (*button, static_cast<DialogType> (i));
     }
+
+    ImagePreviewComponent imagePreview;
+    ScopedPointer<FileChooser> fc;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DialogsDemo)
 };

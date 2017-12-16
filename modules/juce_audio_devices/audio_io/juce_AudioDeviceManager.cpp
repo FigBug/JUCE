@@ -2,31 +2,26 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2016 - ROLI Ltd.
+   Copyright (c) 2017 - ROLI Ltd.
 
-   Permission is granted to use this software under the terms of the ISC license
-   http://www.isc.org/downloads/software-support-policy/isc-license/
+   JUCE is an open source library subject to commercial or open-source
+   licensing.
 
-   Permission to use, copy, modify, and/or distribute this software for any
-   purpose with or without fee is hereby granted, provided that the above
-   copyright notice and this permission notice appear in all copies.
+   The code included in this file is provided under the terms of the ISC license
+   http://www.isc.org/downloads/software-support-policy/isc-license. Permission
+   To use, copy, modify, and/or distribute this software for any purpose with or
+   without fee is hereby granted provided that the above copyright notice and
+   this permission notice appear in all copies.
 
-   THE SOFTWARE IS PROVIDED "AS IS" AND ISC DISCLAIMS ALL WARRANTIES WITH REGARD
-   TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
-   FITNESS. IN NO EVENT SHALL ISC BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT,
-   OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF
-   USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
-   TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
-   OF THIS SOFTWARE.
-
-   -----------------------------------------------------------------------------
-
-   To release a closed-source product which uses other parts of JUCE not
-   licensed under the ISC terms, commercial licenses are available: visit
-   www.juce.com for more information.
+   JUCE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY, AND ALL WARRANTIES, WHETHER
+   EXPRESSED OR IMPLIED, INCLUDING MERCHANTABILITY AND FITNESS FOR PURPOSE, ARE
+   DISCLAIMED.
 
   ==============================================================================
 */
+
+namespace juce
+{
 
 AudioDeviceManager::AudioDeviceSetup::AudioDeviceSetup()
     : sampleRate (0),
@@ -106,8 +101,8 @@ AudioDeviceManager::AudioDeviceManager()
 
 AudioDeviceManager::~AudioDeviceManager()
 {
-    currentAudioDevice = nullptr;
-    defaultMidiOutput = nullptr;
+    currentAudioDevice.reset();
+    defaultMidiOutput.reset();
 }
 
 //==============================================================================
@@ -321,7 +316,7 @@ String AudioDeviceManager::initialiseFromXML (const XmlElement& xml,
 String AudioDeviceManager::initialiseWithDefaultDevices (int numInputChannelsNeeded,
                                                          int numOutputChannelsNeeded)
 {
-    lastExplicitSettings = nullptr;
+    lastExplicitSettings.reset();
 
     return initialise (numInputChannelsNeeded, numOutputChannelsNeeded,
                        nullptr, false, String(), nullptr);
@@ -394,7 +389,7 @@ void AudioDeviceManager::getAudioDeviceSetup (AudioDeviceSetup& setup) const
 
 void AudioDeviceManager::deleteCurrentDevice()
 {
-    currentAudioDevice = nullptr;
+    currentAudioDevice.reset();
     currentSetup.inputDeviceName.clear();
     currentSetup.outputDeviceName.clear();
 }
@@ -442,7 +437,7 @@ String AudioDeviceManager::setAudioDeviceSetup (const AudioDeviceSetup& newSetup
     jassert (&newSetup != &currentSetup);    // this will have no effect
 
     if (newSetup == currentSetup && currentAudioDevice != nullptr)
-        return String();
+        return {};
 
     if (! (newSetup == currentSetup))
         sendChangeMessage();
@@ -462,7 +457,7 @@ String AudioDeviceManager::setAudioDeviceSetup (const AudioDeviceSetup& newSetup
         if (treatAsChosenDevice)
             updateXml();
 
-        return String();
+        return {};
     }
 
     if (currentSetup.inputDeviceName != newInputDeviceName
@@ -593,13 +588,13 @@ void AudioDeviceManager::stopDevice()
     if (currentAudioDevice != nullptr)
         currentAudioDevice->stop();
 
-    testSound = nullptr;
+    testSound.reset();
 }
 
 void AudioDeviceManager::closeAudioDevice()
 {
     stopDevice();
-    currentAudioDevice = nullptr;
+    currentAudioDevice.reset();
 }
 
 void AudioDeviceManager::restartLastAudioDevice()
@@ -710,14 +705,14 @@ void AudioDeviceManager::audioDeviceIOCallbackInt (const float** inputChannelDat
 
     if (callbacks.size() > 0)
     {
-        const double callbackStartTime = Time::getMillisecondCounterHiRes();
+        auto callbackStartTime = Time::getMillisecondCounterHiRes();
 
         tempBuffer.setSize (jmax (1, numOutputChannels), jmax (1, numSamples), false, false, true);
 
         callbacks.getUnchecked(0)->audioDeviceIOCallback (inputChannelData, numInputChannels,
                                                           outputChannelData, numOutputChannels, numSamples);
 
-        float** const tempChans = tempBuffer.getArrayOfWritePointers();
+        auto** tempChans = tempBuffer.getArrayOfWritePointers();
 
         for (int i = callbacks.size(); --i > 0;)
         {
@@ -726,16 +721,19 @@ void AudioDeviceManager::audioDeviceIOCallbackInt (const float** inputChannelDat
 
             for (int chan = 0; chan < numOutputChannels; ++chan)
             {
-                if (const float* const src = tempChans [chan])
-                    if (float* const dst = outputChannelData [chan])
+                if (auto* src = tempChans [chan])
+                    if (auto* dst = outputChannelData [chan])
                         for (int j = 0; j < numSamples; ++j)
                             dst[j] += src[j];
             }
         }
 
-        const double msTaken = Time::getMillisecondCounterHiRes() - callbackStartTime;
+        auto msTaken = Time::getMillisecondCounterHiRes() - callbackStartTime;
         const double filterAmount = 0.2;
         cpuUsageMs += filterAmount * (msTaken - cpuUsageMs);
+
+        if (msTaken > msPerBlock)
+            xruns++;
     }
     else
     {
@@ -745,34 +743,37 @@ void AudioDeviceManager::audioDeviceIOCallbackInt (const float** inputChannelDat
 
     if (testSound != nullptr)
     {
-        const int numSamps = jmin (numSamples, testSound->getNumSamples() - testSoundPosition);
-        const float* const src = testSound->getReadPointer (0, testSoundPosition);
+        auto numSamps = jmin (numSamples, testSound->getNumSamples() - testSoundPosition);
+        auto* src = testSound->getReadPointer (0, testSoundPosition);
 
         for (int i = 0; i < numOutputChannels; ++i)
             for (int j = 0; j < numSamps; ++j)
                 outputChannelData [i][j] += src[j];
 
         testSoundPosition += numSamps;
+
         if (testSoundPosition >= testSound->getNumSamples())
-            testSound = nullptr;
+            testSound.reset();
     }
 }
 
 void AudioDeviceManager::audioDeviceAboutToStartInt (AudioIODevice* const device)
 {
     cpuUsageMs = 0;
+    xruns = 0;
 
-    const double sampleRate = device->getCurrentSampleRate();
-    const int blockSize = device->getCurrentBufferSizeSamples();
+    auto sampleRate = device->getCurrentSampleRate();
+    auto blockSize = device->getCurrentBufferSizeSamples();
 
     if (sampleRate > 0.0 && blockSize > 0)
     {
-        const double msPerBlock = 1000.0 * blockSize / sampleRate;
+        msPerBlock = 1000.0 * blockSize / sampleRate;
         timeToCpuScale = (msPerBlock > 0.0) ? (1.0 / msPerBlock) : 0.0;
     }
 
     {
         const ScopedLock sl (audioCallbackLock);
+
         for (int i = callbacks.size(); --i >= 0;)
             callbacks.getUnchecked(i)->audioDeviceAboutToStart (device);
     }
@@ -784,9 +785,11 @@ void AudioDeviceManager::audioDeviceStoppedInt()
 {
     cpuUsageMs = 0;
     timeToCpuScale = 0;
+    xruns = 0;
     sendChangeMessage();
 
     const ScopedLock sl (audioCallbackLock);
+
     for (int i = callbacks.size(); --i >= 0;)
         callbacks.getUnchecked(i)->audioDeviceStopped();
 }
@@ -794,6 +797,7 @@ void AudioDeviceManager::audioDeviceStoppedInt()
 void AudioDeviceManager::audioDeviceErrorInt (const String& message)
 {
     const ScopedLock sl (audioCallbackLock);
+
     for (int i = callbacks.size(); --i >= 0;)
         callbacks.getUnchecked(i)->audioDeviceError (message);
 }
@@ -903,7 +907,7 @@ void AudioDeviceManager::setDefaultMidiOutput (const String& deviceName)
             for (int i = oldCallbacks.size(); --i >= 0;)
                 oldCallbacks.getUnchecked(i)->audioDeviceStopped();
 
-        defaultMidiOutput = nullptr;
+        defaultMidiOutput.reset();
         defaultMidiOutputName = deviceName;
 
         if (deviceName.isNotEmpty())
@@ -928,6 +932,8 @@ AudioDeviceManager::LevelMeter::LevelMeter() noexcept : level() {}
 
 void AudioDeviceManager::LevelMeter::updateLevel (const float* const* channelData, int numChannels, int numSamples) noexcept
 {
+    auto localLevel = level.get();
+
     if (enabled.get() != 0 && numChannels > 0)
     {
         for (int j = 0; j < numSamples; ++j)
@@ -937,22 +943,24 @@ void AudioDeviceManager::LevelMeter::updateLevel (const float* const* channelDat
             for (int i = 0; i < numChannels; ++i)
                 s += std::abs (channelData[i][j]);
 
-            s /= numChannels;
+            s /= (float) numChannels;
 
-            const double decayFactor = 0.99992;
+            const float decayFactor = 0.99992f;
 
-            if (s > level)
-                level = s;
-            else if (level > 0.001f)
-                level *= decayFactor;
+            if (s > localLevel)
+                localLevel = s;
+            else if (localLevel > 0.001f)
+                localLevel *= decayFactor;
             else
-                level = 0;
+                localLevel = 0;
         }
     }
     else
     {
-        level = 0;
+        localLevel = 0;
     }
+
+    level = localLevel;
 }
 
 void AudioDeviceManager::LevelMeter::setEnabled (bool shouldBeEnabled) noexcept
@@ -964,13 +972,13 @@ void AudioDeviceManager::LevelMeter::setEnabled (bool shouldBeEnabled) noexcept
 double AudioDeviceManager::LevelMeter::getCurrentLevel() const noexcept
 {
     jassert (enabled.get() != 0); // you need to call setEnabled (true) before using this!
-    return level;
+    return level.get();
 }
 
 void AudioDeviceManager::playTestSound()
 {
     { // cunningly nested to swap, unlock and delete in that order.
-        ScopedPointer<AudioSampleBuffer> oldSound;
+        ScopedPointer<AudioBuffer<float>> oldSound;
 
         {
             const ScopedLock sl (audioCallbackLock);
@@ -982,15 +990,15 @@ void AudioDeviceManager::playTestSound()
 
     if (currentAudioDevice != nullptr)
     {
-        const double sampleRate = currentAudioDevice->getCurrentSampleRate();
-        const int soundLength = (int) sampleRate;
+        auto sampleRate = currentAudioDevice->getCurrentSampleRate();
+        auto soundLength = (int) sampleRate;
 
-        const double frequency = 440.0;
-        const float amplitude = 0.5f;
+        double frequency = 440.0;
+        float amplitude = 0.5f;
 
-        const double phasePerSample = double_Pi * 2.0 / (sampleRate / frequency);
+        auto phasePerSample = MathConstants<double>::twoPi / (sampleRate / frequency);
 
-        AudioSampleBuffer* const newSound = new AudioSampleBuffer (1, soundLength);
+        auto* newSound = new AudioBuffer<float> (1, soundLength);
 
         for (int i = 0; i < soundLength; ++i)
             newSound->setSample (0, i, amplitude * (float) std::sin (i * phasePerSample));
@@ -1003,8 +1011,16 @@ void AudioDeviceManager::playTestSound()
     }
 }
 
+int AudioDeviceManager::getXRunCount() const noexcept
+{
+    auto deviceXRuns = (currentAudioDevice != nullptr ? currentAudioDevice->getXRunCount() : -1);
+    return (deviceXRuns >= 0 ? deviceXRuns : xruns);
+}
+
 double AudioDeviceManager::getCurrentInputLevel() const noexcept    { return inputLevelMeter.getCurrentLevel(); }
 double AudioDeviceManager::getCurrentOutputLevel() const noexcept   { return outputLevelMeter.getCurrentLevel(); }
 
 void AudioDeviceManager::enableInputLevelMeasurement  (bool enable) noexcept  { inputLevelMeter.setEnabled (enable); }
 void AudioDeviceManager::enableOutputLevelMeasurement (bool enable) noexcept  { outputLevelMeter.setEnabled (enable); }
+
+} // namespace juce

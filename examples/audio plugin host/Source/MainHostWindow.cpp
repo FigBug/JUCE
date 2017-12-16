@@ -2,22 +2,24 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2015 - ROLI Ltd.
+   Copyright (c) 2017 - ROLI Ltd.
 
-   Permission is granted to use this software under the terms of either:
-   a) the GPL v2 (or any later version)
-   b) the Affero GPL v3
+   JUCE is an open source library subject to commercial or open-source
+   licensing.
 
-   Details of these licenses can be found at: www.gnu.org/licenses
+   By using JUCE, you agree to the terms of both the JUCE 5 End-User License
+   Agreement and JUCE 5 Privacy Policy (both updated and effective as of the
+   27th April 2017).
 
-   JUCE is distributed in the hope that it will be useful, but WITHOUT ANY
-   WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
-   A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+   End User License Agreement: www.juce.com/juce-5-licence
+   Privacy Policy: www.juce.com/juce-5-privacy-policy
 
-   ------------------------------------------------------------------------------
+   Or: You may also use this code under the terms of the GPL v3 (see
+   www.gnu.org/licenses).
 
-   To release a closed-source product which uses JUCE, commercial licenses are
-   available: visit www.juce.com for more information.
+   JUCE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY, AND ALL WARRANTIES, WHETHER
+   EXPRESSED OR IMPLIED, INCLUDING MERCHANTABILITY AND FITNESS FOR PURPOSE, ARE
+   DISCLAIMED.
 
   ==============================================================================
 */
@@ -31,13 +33,14 @@
 class MainHostWindow::PluginListWindow  : public DocumentWindow
 {
 public:
-    PluginListWindow (MainHostWindow& owner_, AudioPluginFormatManager& pluginFormatManager)
-        : DocumentWindow ("Available Plugins", Colours::white,
+    PluginListWindow (MainHostWindow& mw, AudioPluginFormatManager& pluginFormatManager)
+        : DocumentWindow ("Available Plugins",
+                          LookAndFeel::getDefaultLookAndFeel().findColour (ResizableWindow::backgroundColourId),
                           DocumentWindow::minimiseButton | DocumentWindow::closeButton),
-          owner (owner_)
+          owner (mw)
     {
-        const File deadMansPedalFile (getAppProperties().getUserSettings()
-                                        ->getFile().getSiblingFile ("RecentlyCrashedPluginsList"));
+        auto deadMansPedalFile = getAppProperties().getUserSettings()
+                                   ->getFile().getSiblingFile ("RecentlyCrashedPluginsList");
 
         setContentOwned (new PluginListComponent (pluginFormatManager,
                                                   owner.knownPluginList,
@@ -55,11 +58,10 @@ public:
     ~PluginListWindow()
     {
         getAppProperties().getUserSettings()->setValue ("listWindowPos", getWindowStateAsString());
-
         clearContentComponent();
     }
 
-    void closeButtonPressed()
+    void closeButtonPressed() override
     {
         owner.pluginListWindow = nullptr;
     }
@@ -72,7 +74,8 @@ private:
 
 //==============================================================================
 MainHostWindow::MainHostWindow()
-    : DocumentWindow (JUCEApplication::getInstance()->getApplicationName(), Colours::lightgrey,
+    : DocumentWindow (JUCEApplication::getInstance()->getApplicationName(),
+                      LookAndFeel::getDefaultLookAndFeel().findColour (ResizableWindow::backgroundColourId),
                       DocumentWindow::allButtons)
 {
     formatManager.addDefaultFormats();
@@ -87,7 +90,9 @@ MainHostWindow::MainHostWindow()
     setResizeLimits (500, 400, 10000, 10000);
     centreWithSize (800, 600);
 
-    setContentOwned (new GraphDocumentComponent (formatManager, &deviceManager), false);
+    graphHolder = new GraphDocumentComponent (formatManager, deviceManager);
+
+    setContentNonOwned (graphHolder, false);
 
     restoreWindowStateFromString (getAppProperties().getUserSettings()->getValue ("mainWindowPos"));
 
@@ -106,7 +111,7 @@ MainHostWindow::MainHostWindow()
 
     knownPluginList.addChangeListener (this);
 
-    if (FilterGraph* filterGraph = getGraphEditor()->graph.get())
+    if (auto* filterGraph = graphHolder->graph.get())
         filterGraph->addChangeListener (this);
 
     addKeyListener (getCommandManager().getKeyMappings());
@@ -127,7 +132,7 @@ MainHostWindow::~MainHostWindow()
     pluginListWindow = nullptr;
     knownPluginList.removeChangeListener (this);
 
-    if (FilterGraph* filterGraph = getGraphEditor()->graph.get())
+    if (auto* filterGraph = graphHolder->graph.get())
         filterGraph->removeChangeListener (this);
 
     getAppProperties().getUserSettings()->setValue ("mainWindowPos", getWindowStateAsString());
@@ -138,6 +143,8 @@ MainHostWindow::~MainHostWindow()
    #else
     setMenuBar (nullptr);
    #endif
+
+    graphHolder = nullptr;
 }
 
 void MainHostWindow::closeButtonPressed()
@@ -145,22 +152,43 @@ void MainHostWindow::closeButtonPressed()
     tryToQuitApplication();
 }
 
-bool MainHostWindow::tryToQuitApplication()
+struct AsyncQuitRetrier  : private Timer
 {
-    PluginWindow::closeAllCurrentlyOpenWindows();
+    AsyncQuitRetrier()   { startTimer (500); }
 
-    if (getGraphEditor() == nullptr
-         || getGraphEditor()->graph->saveIfNeededAndUserAgrees() == FileBasedDocument::savedOk)
+    void timerCallback() override
+    {
+        stopTimer();
+        delete this;
+
+        if (auto app = JUCEApplicationBase::getInstance())
+            app->systemRequestedQuit();
+    }
+};
+
+void MainHostWindow::tryToQuitApplication()
+{
+    if (graphHolder->closeAnyOpenPluginWindows())
+    {
+        // Really important thing to note here: if the last call just deleted any plugin windows,
+        // we won't exit immediately - instead we'll use our AsyncQuitRetrier to let the message
+        // loop run for another brief moment, then try again. This will give any plugins a chance
+        // to flush any GUI events that may have been in transit before the app forces them to
+        // be unloaded
+        new AsyncQuitRetrier();
+    }
+    else if (ModalComponentManager::getInstance()->cancelAllModalComponents())
+    {
+        new AsyncQuitRetrier();
+    }
+    else if (graphHolder == nullptr || graphHolder->graph->saveIfNeededAndUserAgrees() == FileBasedDocument::savedOk)
     {
         // Some plug-ins do not want [NSApp stop] to be called
         // before the plug-ins are not deallocated.
-        getGraphEditor()->releaseGraph();
+        graphHolder->releaseGraph();
 
         JUCEApplication::quit();
-        return true;
     }
-
-    return false;
 }
 
 void MainHostWindow::changeListenerCallback (ChangeBroadcaster* changed)
@@ -179,11 +207,10 @@ void MainHostWindow::changeListenerCallback (ChangeBroadcaster* changed)
             getAppProperties().saveIfNeeded();
         }
     }
-    else if (changed == getGraphEditor()->graph)
+    else if (graphHolder != nullptr && changed == graphHolder->graph)
     {
-        String title = JUCEApplication::getInstance()->getApplicationName();
-
-        File f = getGraphEditor()->graph->getFile();
+        auto title = JUCEApplication::getInstance()->getApplicationName();
+        auto f = graphHolder->graph->getFile();
 
         if (f.existsAsFile())
             title = f.getFileName() + " - " + title;
@@ -194,9 +221,12 @@ void MainHostWindow::changeListenerCallback (ChangeBroadcaster* changed)
 
 StringArray MainHostWindow::getMenuBarNames()
 {
-    const char* const names[] = { "File", "Plugins", "Options", "Windows", nullptr };
-
-    return StringArray (names);
+    StringArray names;
+    names.add ("File");
+    names.add ("Plugins");
+    names.add ("Options");
+    names.add ("Windows");
+    return names;
 }
 
 PopupMenu MainHostWindow::getMenuForIndex (int topLevelMenuIndex, const String& /*menuName*/)
@@ -262,13 +292,11 @@ PopupMenu MainHostWindow::getMenuForIndex (int topLevelMenuIndex, const String& 
 
 void MainHostWindow::menuItemSelected (int menuItemID, int /*topLevelMenuIndex*/)
 {
-    GraphDocumentComponent* const graphEditor = getGraphEditor();
-
     if (menuItemID == 250)
     {
-        if (graphEditor != nullptr)
-            if (FilterGraph* filterGraph = getGraphEditor()->graph.get())
-                filterGraph->clear();
+        if (graphHolder != nullptr)
+            if (auto* graph = graphHolder->graph.get())
+                graph->clear();
     }
     else if (menuItemID >= 100 && menuItemID < 200)
     {
@@ -276,10 +304,10 @@ void MainHostWindow::menuItemSelected (int menuItemID, int /*topLevelMenuIndex*/
         recentFiles.restoreFromString (getAppProperties().getUserSettings()
                                             ->getValue ("recentFilterGraphFiles"));
 
-        if (graphEditor != nullptr
-              && getGraphEditor()->graph != nullptr
-              && graphEditor->graph->saveIfNeededAndUserAgrees() == FileBasedDocument::savedOk)
-            graphEditor->graph->loadFrom (recentFiles.getFile (menuItemID - 100), true);
+        if (graphHolder != nullptr)
+            if (auto* graph = graphHolder->graph.get())
+                if (graph != nullptr && graph->saveIfNeededAndUserAgrees() == FileBasedDocument::savedOk)
+                    graph->loadFrom (recentFiles.getFile (menuItemID - 100), true);
     }
     else if (menuItemID >= 200 && menuItemID < 210)
     {
@@ -295,32 +323,35 @@ void MainHostWindow::menuItemSelected (int menuItemID, int /*topLevelMenuIndex*/
     }
     else
     {
-        createPlugin (getChosenType (menuItemID),
-                      proportionOfWidth  (0.3f + Random::getSystemRandom().nextFloat() * 0.6f),
-                      proportionOfHeight (0.3f + Random::getSystemRandom().nextFloat() * 0.6f));
+        if (auto* desc = getChosenType (menuItemID))
+            createPlugin (*desc,
+                          { proportionOfWidth  (0.3f + Random::getSystemRandom().nextFloat() * 0.6f),
+                            proportionOfHeight (0.3f + Random::getSystemRandom().nextFloat() * 0.6f) });
     }
 }
 
 void MainHostWindow::menuBarActivated (bool isActivated)
 {
-    GraphDocumentComponent* const graphEditor = getGraphEditor();
-
-    if (graphEditor != nullptr && isActivated)
-        graphEditor->unfocusKeyboardComponent();
+    if (isActivated && graphHolder != nullptr)
+        graphHolder->unfocusKeyboardComponent();
 }
 
-void MainHostWindow::createPlugin (const PluginDescription* desc, int x, int y)
+void MainHostWindow::createPlugin (const PluginDescription& desc, Point<int> pos)
 {
-    GraphDocumentComponent* const graphEditor = getGraphEditor();
-
-    if (graphEditor != nullptr)
-        graphEditor->createNewPlugin (desc, x, y);
+    if (graphHolder != nullptr)
+        graphHolder->createNewPlugin (desc, pos);
 }
 
 void MainHostWindow::addPluginsToMenu (PopupMenu& m) const
 {
-    for (int i = 0; i < internalTypes.size(); ++i)
-        m.addItem (i + 1, internalTypes.getUnchecked(i)->name);
+    if (graphHolder != nullptr)
+    {
+        int i = 0;
+
+        for (auto* t : internalTypes)
+            m.addItem (++i, t->name + " (" + t->pluginFormatName + ")",
+                       graphHolder->graph->getNodeForName (t->name) == nullptr);
+    }
 
     m.addSeparator();
 
@@ -341,7 +372,7 @@ ApplicationCommandTarget* MainHostWindow::getNextCommandTarget()
     return findFirstTargetParentComponent();
 }
 
-void MainHostWindow::getAllCommands (Array <CommandID>& commands)
+void MainHostWindow::getAllCommands (Array<CommandID>& commands)
 {
     // this returns the set of all commands that this target can perform..
     const CommandID ids[] = { CommandIDs::newFile,
@@ -416,28 +447,26 @@ void MainHostWindow::getCommandInfo (const CommandID commandID, ApplicationComma
 
 bool MainHostWindow::perform (const InvocationInfo& info)
 {
-    GraphDocumentComponent* const graphEditor = getGraphEditor();
-
     switch (info.commandID)
     {
     case CommandIDs::newFile:
-        if (graphEditor != nullptr && graphEditor->graph != nullptr && graphEditor->graph->saveIfNeededAndUserAgrees() == FileBasedDocument::savedOk)
-            graphEditor->graph->newDocument();
+        if (graphHolder != nullptr && graphHolder->graph != nullptr && graphHolder->graph->saveIfNeededAndUserAgrees() == FileBasedDocument::savedOk)
+            graphHolder->graph->newDocument();
         break;
 
     case CommandIDs::open:
-        if (graphEditor != nullptr && graphEditor->graph != nullptr && graphEditor->graph->saveIfNeededAndUserAgrees() == FileBasedDocument::savedOk)
-            graphEditor->graph->loadFromUserSpecifiedFile (true);
+        if (graphHolder != nullptr && graphHolder->graph != nullptr && graphHolder->graph->saveIfNeededAndUserAgrees() == FileBasedDocument::savedOk)
+            graphHolder->graph->loadFromUserSpecifiedFile (true);
         break;
 
     case CommandIDs::save:
-        if (graphEditor != nullptr && graphEditor->graph != nullptr)
-            graphEditor->graph->save (true, true);
+        if (graphHolder != nullptr && graphHolder->graph != nullptr)
+            graphHolder->graph->save (true, true);
         break;
 
     case CommandIDs::saveAs:
-        if (graphEditor != nullptr && graphEditor->graph != nullptr)
-            graphEditor->graph->saveAs (File(), true, true, true);
+        if (graphHolder != nullptr && graphHolder->graph != nullptr)
+            graphHolder->graph->saveAs (File(), true, true, true);
         break;
 
     case CommandIDs::showPluginListEditor:
@@ -452,7 +481,7 @@ bool MainHostWindow::perform (const InvocationInfo& info)
         break;
 
     case CommandIDs::toggleDoublePrecision:
-        if (PropertiesFile* props = getAppProperties().getUserSettings())
+        if (auto* props = getAppProperties().getUserSettings())
         {
             bool newIsDoublePrecision = ! isDoublePrecisionProcessing();
             props->setValue ("doublePrecisionProcessing", var (newIsDoublePrecision));
@@ -463,8 +492,8 @@ bool MainHostWindow::perform (const InvocationInfo& info)
                 menuItemsChanged();
             }
 
-            if (graphEditor != nullptr)
-                graphEditor->setDoublePrecision (newIsDoublePrecision);
+            if (graphHolder != nullptr)
+                graphHolder->setDoublePrecision (newIsDoublePrecision);
         }
         break;
 
@@ -474,7 +503,7 @@ bool MainHostWindow::perform (const InvocationInfo& info)
 
     case CommandIDs::allWindowsForward:
     {
-        Desktop& desktop = Desktop::getInstance();
+        auto& desktop = Desktop::getInstance();
 
         for (int i = 0; i < desktop.getNumComponents(); ++i)
             desktop.getComponent (i)->toBehind (this);
@@ -502,7 +531,7 @@ void MainHostWindow::showAudioSettings()
     o.content.setNonOwned (&audioSettingsComp);
     o.dialogTitle                   = "Audio Settings";
     o.componentToCentreAround       = this;
-    o.dialogBackgroundColour        = Colours::azure;
+    o.dialogBackgroundColour        = getLookAndFeel().findColour (ResizableWindow::backgroundColourId);
     o.escapeKeyTriggersCloseButton  = true;
     o.useNativeTitleBar             = false;
     o.resizable                     = false;
@@ -514,10 +543,9 @@ void MainHostWindow::showAudioSettings()
     getAppProperties().getUserSettings()->setValue ("audioDeviceState", audioState);
     getAppProperties().getUserSettings()->saveIfNeeded();
 
-    GraphDocumentComponent* const graphEditor = getGraphEditor();
-
-    if (graphEditor != nullptr && graphEditor->graph != nullptr)
-        graphEditor->graph->removeIllegalConnections();
+    if (graphHolder != nullptr)
+        if (graphHolder->graph != nullptr)
+            graphHolder->graph->graph.removeIllegalConnections();
 }
 
 bool MainHostWindow::isInterestedInFileDrag (const StringArray&)
@@ -539,37 +567,31 @@ void MainHostWindow::fileDragExit (const StringArray&)
 
 void MainHostWindow::filesDropped (const StringArray& files, int x, int y)
 {
-    GraphDocumentComponent* const graphEditor = getGraphEditor();
-
-    if (graphEditor != nullptr)
+    if (graphHolder != nullptr)
     {
-        if (files.size() == 1 && File (files[0]).hasFileExtension (filenameSuffix))
+        if (files.size() == 1 && File (files[0]).hasFileExtension (FilterGraph::getFilenameSuffix()))
         {
-            if (FilterGraph* filterGraph = graphEditor->graph.get())
-            if (filterGraph->saveIfNeededAndUserAgrees() == FileBasedDocument::savedOk)
-                filterGraph->loadFrom (File (files[0]), true);
+            if (auto* filterGraph = graphHolder->graph.get())
+                if (filterGraph->saveIfNeededAndUserAgrees() == FileBasedDocument::savedOk)
+                    filterGraph->loadFrom (File (files[0]), true);
         }
         else
         {
-            OwnedArray <PluginDescription> typesFound;
+            OwnedArray<PluginDescription> typesFound;
             knownPluginList.scanAndAddDragAndDroppedFiles (formatManager, files, typesFound);
 
-            Point<int> pos (graphEditor->getLocalPoint (this, Point<int> (x, y)));
+            auto pos = graphHolder->getLocalPoint (this, Point<int> (x, y));
 
             for (int i = 0; i < jmin (5, typesFound.size()); ++i)
-                createPlugin (typesFound.getUnchecked(i), pos.getX(), pos.getY());
+                if (auto* desc = typesFound.getUnchecked(i))
+                    createPlugin (*desc, pos);
         }
     }
 }
 
-GraphDocumentComponent* MainHostWindow::getGraphEditor() const
-{
-    return dynamic_cast<GraphDocumentComponent*> (getContentComponent());
-}
-
 bool MainHostWindow::isDoublePrecisionProcessing()
 {
-    if (PropertiesFile* props = getAppProperties().getUserSettings())
+    if (auto* props = getAppProperties().getUserSettings())
         return props->getBoolValue ("doublePrecisionProcessing", false);
 
     return false;

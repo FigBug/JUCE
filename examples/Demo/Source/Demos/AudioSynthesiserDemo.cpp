@@ -2,22 +2,24 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2015 - ROLI Ltd.
+   Copyright (c) 2017 - ROLI Ltd.
 
-   Permission is granted to use this software under the terms of either:
-   a) the GPL v2 (or any later version)
-   b) the Affero GPL v3
+   JUCE is an open source library subject to commercial or open-source
+   licensing.
 
-   Details of these licenses can be found at: www.gnu.org/licenses
+   By using JUCE, you agree to the terms of both the JUCE 5 End-User License
+   Agreement and JUCE 5 Privacy Policy (both updated and effective as of the
+   27th April 2017).
 
-   JUCE is distributed in the hope that it will be useful, but WITHOUT ANY
-   WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
-   A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+   End User License Agreement: www.juce.com/juce-5-licence
+   Privacy Policy: www.juce.com/juce-5-privacy-policy
 
-   ------------------------------------------------------------------------------
+   Or: You may also use this code under the terms of the GPL v3 (see
+   www.gnu.org/licenses).
 
-   To release a closed-source product which uses JUCE, commercial licenses are
-   available: visit www.juce.com for more information.
+   JUCE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY, AND ALL WARRANTIES, WHETHER
+   EXPRESSED OR IMPLIED, INCLUDING MERCHANTABILITY AND FITNESS FOR PURPOSE, ARE
+   DISCLAIMED.
 
   ==============================================================================
 */
@@ -40,9 +42,7 @@ struct SineWaveSound : public SynthesiserSound
 /** Our demo synth voice just plays a sine wave.. */
 struct SineWaveVoice  : public SynthesiserVoice
 {
-    SineWaveVoice()   : currentAngle (0), angleDelta (0), level (0), tailOff (0)
-    {
-    }
+    SineWaveVoice() {}
 
     bool canPlaySound (SynthesiserSound* sound) override
     {
@@ -59,7 +59,7 @@ struct SineWaveVoice  : public SynthesiserVoice
         double cyclesPerSecond = MidiMessage::getMidiNoteInHertz (midiNoteNumber);
         double cyclesPerSample = cyclesPerSecond / getSampleRate();
 
-        angleDelta = cyclesPerSample * 2.0 * double_Pi;
+        angleDelta = cyclesPerSample * MathConstants<double>::twoPi;
     }
 
     void stopNote (float /*velocity*/, bool allowTailOff) override
@@ -92,7 +92,7 @@ struct SineWaveVoice  : public SynthesiserVoice
         // not interested in controllers in this case.
     }
 
-    void renderNextBlock (AudioSampleBuffer& outputBuffer, int startSample, int numSamples) override
+    void renderNextBlock (AudioBuffer<float>& outputBuffer, int startSample, int numSamples) override
     {
         if (angleDelta != 0.0)
         {
@@ -100,7 +100,7 @@ struct SineWaveVoice  : public SynthesiserVoice
             {
                 while (--numSamples >= 0)
                 {
-                    const float currentSample = (float) (std::sin (currentAngle) * level * tailOff);
+                    auto currentSample = (float) (std::sin (currentAngle) * level * tailOff);
 
                     for (int i = outputBuffer.getNumChannels(); --i >= 0;)
                         outputBuffer.addSample (i, startSample, currentSample);
@@ -123,7 +123,7 @@ struct SineWaveVoice  : public SynthesiserVoice
             {
                 while (--numSamples >= 0)
                 {
-                    const float currentSample = (float) (std::sin (currentAngle) * level);
+                    auto currentSample = (float) (std::sin (currentAngle) * level);
 
                     for (int i = outputBuffer.getNumChannels(); --i >= 0;)
                         outputBuffer.addSample (i, startSample, currentSample);
@@ -136,7 +136,7 @@ struct SineWaveVoice  : public SynthesiserVoice
     }
 
 private:
-    double currentAngle, angleDelta, level, tailOff;
+    double currentAngle = 0, angleDelta = 0, level = 0, tailOff = 0;
 };
 
 //==============================================================================
@@ -277,7 +277,7 @@ public:
     //==============================================================================
     void paint (Graphics& g) override
     {
-        fillStandardDemoBackground (g);
+        g.fillAll (getUIColourIfAvailable (LookAndFeel_V4::ColourScheme::UIColour::windowBackground));
     }
 
     void resized() override

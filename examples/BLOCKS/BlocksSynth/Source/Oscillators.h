@@ -1,6 +1,30 @@
+/*
+  ==============================================================================
 
-#ifndef OSCILLATORS_H_INCLUDED
-#define OSCILLATORS_H_INCLUDED
+   This file is part of the JUCE library.
+   Copyright (c) 2017 - ROLI Ltd.
+
+   JUCE is an open source library subject to commercial or open-source
+   licensing.
+
+   By using JUCE, you agree to the terms of both the JUCE 5 End-User License
+   Agreement and JUCE 5 Privacy Policy (both updated and effective as of the
+   27th April 2017).
+
+   End User License Agreement: www.juce.com/juce-5-licence
+   Privacy Policy: www.juce.com/juce-5-privacy-policy
+
+   Or: You may also use this code under the terms of the GPL v3 (see
+   www.gnu.org/licenses).
+
+   JUCE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY, AND ALL WARRANTIES, WHETHER
+   EXPRESSED OR IMPLIED, INCLUDING MERCHANTABILITY AND FITNESS FOR PURPOSE, ARE
+   DISCLAIMED.
+
+  ==============================================================================
+*/
+
+#pragma once
 
 #include "../JuceLibraryCode/JuceHeader.h"
 
@@ -19,7 +43,7 @@ public:
     void startNote (int midiNoteNumber, float velocity, SynthesiserSound*, int) override
     {
         frequency = MidiMessage::getMidiNoteInHertz (midiNoteNumber);
-        phaseIncrement.setValue (((2.0 * double_Pi) * frequency) / sampleRate);
+        phaseIncrement.setValue (((MathConstants<double>::twoPi) * frequency) / sampleRate);
         amplitude.setValue (velocity);
 
         // Store the initial note and work out the maximum frequency deviations for pitch bend
@@ -37,8 +61,8 @@ public:
     void pitchWheelMoved (int newValue) override
     {
         // Change the phase increment based on pitch bend amount
-        double frequencyOffset = ((newValue > 0 ? maxFreq : minFreq) * (newValue / 127.0));
-        phaseIncrement.setValue (((2.0 * double_Pi) * (frequency + frequencyOffset)) / sampleRate);
+        auto frequencyOffset = ((newValue > 0 ? maxFreq : minFreq) * (newValue / 127.0));
+        phaseIncrement.setValue (((MathConstants<double>::twoPi) * (frequency + frequencyOffset)) / sampleRate);
     }
 
     void controllerMoved (int, int) override
@@ -51,13 +75,13 @@ public:
         amplitude.setValue (newChannelPressureValue / 127.0);
     }
 
-    void renderNextBlock (AudioSampleBuffer& outputBuffer, int startSample, int numSamples) override
+    void renderNextBlock (AudioBuffer<float>& outputBuffer, int startSample, int numSamples) override
     {
         while (--numSamples >= 0)
         {
-            double output = getSample() * amplitude.getNextValue();
+            auto output = getSample() * amplitude.getNextValue();
 
-            for (int i = outputBuffer.getNumChannels(); --i >= 0;)
+            for (auto i = outputBuffer.getNumChannels(); --i >= 0;)
                 outputBuffer.addSample (i, startSample, static_cast<float> (output));
 
             ++startSample;
@@ -67,12 +91,12 @@ public:
     /** Returns the next sample */
     double getSample()
     {
-        double output = renderWaveShape (phasePos);
+        auto output = renderWaveShape (phasePos);
 
         phasePos += phaseIncrement.getNextValue();
 
-        if (phasePos > (2.0 * double_Pi))
-            phasePos -= (2.0 * double_Pi);
+        if (phasePos > MathConstants<double>::twoPi)
+            phasePos -= MathConstants<double>::twoPi;
 
         return output;
     }
@@ -153,7 +177,7 @@ struct SquareVoice : public Oscillator
 
     bool canPlaySound (SynthesiserSound* sound) override { return dynamic_cast<SquareSound*> (sound) != nullptr; }
 
-    double renderWaveShape (const double currentPhase) override { return (currentPhase < double_Pi ? 0.0 : 1.0); }
+    double renderWaveShape (const double currentPhase) override { return (currentPhase < MathConstants<double>::pi ? 0.0 : 1.0); }
 
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SquareVoice)
@@ -184,7 +208,7 @@ struct SawVoice : public Oscillator
 
     bool canPlaySound (SynthesiserSound* sound) override { return dynamic_cast<SawSound*> (sound) != nullptr; }
 
-    double renderWaveShape (const double currentPhase) override { return (1.0 / double_Pi) * currentPhase - 1.0; }
+    double renderWaveShape (const double currentPhase) override { return (1.0 / MathConstants<double>::pi) * currentPhase - 1.0; }
 
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SawVoice)
@@ -217,12 +241,10 @@ struct TriangleVoice : public Oscillator
 
     double renderWaveShape (const double currentPhase) override
     {
-        return (currentPhase < double_Pi ? -1.0 + (2.0 / double_Pi) * currentPhase
-                                         :  3.0 - (2.0 / double_Pi) * currentPhase);
+        return currentPhase < MathConstants<double>::pi ? -1.0 + (2.0 / MathConstants<double>::pi) * currentPhase
+                                                        :  3.0 - (2.0 / MathConstants<double>::pi) * currentPhase;
     }
 
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TriangleVoice)
 };
-
-#endif  // OSCILLATORS_H_INCLUDED

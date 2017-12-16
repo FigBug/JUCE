@@ -2,29 +2,30 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2015 - ROLI Ltd.
+   Copyright (c) 2017 - ROLI Ltd.
 
-   Permission is granted to use this software under the terms of either:
-   a) the GPL v2 (or any later version)
-   b) the Affero GPL v3
+   JUCE is an open source library subject to commercial or open-source
+   licensing.
 
-   Details of these licenses can be found at: www.gnu.org/licenses
+   By using JUCE, you agree to the terms of both the JUCE 5 End-User License
+   Agreement and JUCE 5 Privacy Policy (both updated and effective as of the
+   27th April 2017).
 
-   JUCE is distributed in the hope that it will be useful, but WITHOUT ANY
-   WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
-   A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+   End User License Agreement: www.juce.com/juce-5-licence
+   Privacy Policy: www.juce.com/juce-5-privacy-policy
 
-   ------------------------------------------------------------------------------
+   Or: You may also use this code under the terms of the GPL v3 (see
+   www.gnu.org/licenses).
 
-   To release a closed-source product which uses JUCE, commercial licenses are
-   available: visit www.juce.com for more information.
+   JUCE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY, AND ALL WARRANTIES, WHETHER
+   EXPRESSED OR IMPLIED, INCLUDING MERCHANTABILITY AND FITNESS FOR PURPOSE, ARE
+   DISCLAIMED.
 
   ==============================================================================
 */
 
 
-#ifndef MPESETUPCOMPONENT_H_INCLUDED
-#define MPESETUPCOMPONENT_H_INCLUDED
+#pragma once
 
 
 class MPESetupComponent : public Component,
@@ -172,7 +173,7 @@ private:
                                         masterPitchbendRange.getText().getIntValue());
 
             zoneLayout.addZone (newZone);
-            listeners.call (&MPESetupComponent::Listener::zoneAdded, newZone);
+            listeners.call ([&] (Listener& l) { l.zoneAdded (newZone); });
         }
         else
         {
@@ -184,7 +185,7 @@ private:
     void clearAllZonesButtonClicked()
     {
         zoneLayout.clearAllZones();
-        listeners.call (&MPESetupComponent::Listener::allZonesCleared);
+        listeners.call ([] (Listener& l) { l.allZonesCleared(); });
     }
 
     //==============================================================================
@@ -205,10 +206,9 @@ private:
 
         if (areLegacyModeParametersValid())
         {
-            listeners.call (&MPESetupComponent::Listener::legacyModeChanged,
-                            legacyModeEnabledToggle.getToggleState(),
-                            legacyPitchbendRange.getText().getIntValue(),
-                            getLegacyModeChannelRange());
+            listeners.call ([&] (Listener& l) { l.legacyModeChanged (legacyModeEnabledToggle.getToggleState(),
+                                                                     legacyPitchbendRange.getText().getIntValue(),
+                                                                     getLegacyModeChannelRange()); });
         }
         else
         {
@@ -219,8 +219,8 @@ private:
     //==============================================================================
     void voiceStealingEnabledToggleClicked()
     {
-        listeners.call (&MPESetupComponent::Listener::voiceStealingEnabledChanged,
-                        voiceStealingEnabledToggle.getToggleState());
+        bool newState = voiceStealingEnabledToggle.getToggleState();
+        listeners.call ([=] (Listener& l) { l.voiceStealingEnabledChanged (newState); });
     }
 
     //==============================================================================
@@ -230,7 +230,7 @@ private:
         {
             numberOfVoicesChanged();
         }
-        else if (legacyModeEnabledToggle.getToggleState() == true)
+        else if (legacyModeEnabledToggle.getToggleState())
         {
             if (comboBoxThatHasChanged == &legacyPitchbendRange)
                 legacyModePitchbendRangeChanged();
@@ -242,17 +242,16 @@ private:
     //==============================================================================
     void numberOfVoicesChanged()
     {
-        listeners.call (&MPESetupComponent::Listener::numberOfVoicesChanged,
-                        numberOfVoices.getText().getIntValue());
+        listeners.call ([this] (Listener& l) { l.numberOfVoicesChanged (numberOfVoices.getText().getIntValue()); });
     }
 
     void legacyModePitchbendRangeChanged()
     {
         jassert (legacyModeEnabledToggle.getToggleState() == true);
 
-        listeners.call (&MPESetupComponent::Listener::legacyModeChanged, true,
-                        legacyPitchbendRange.getText().getIntValue(),
-                        getLegacyModeChannelRange());
+        listeners.call ([this] (Listener& l) { l.legacyModeChanged (true,
+                                                                    legacyPitchbendRange.getText().getIntValue(),
+                                                                    getLegacyModeChannelRange()); });
     }
 
     void legacyModeChannelRangeChanged()
@@ -261,9 +260,9 @@ private:
 
         if (areLegacyModeParametersValid())
         {
-            listeners.call (&MPESetupComponent::Listener::legacyModeChanged, true,
-                            legacyPitchbendRange.getText().getIntValue(),
-                            getLegacyModeChannelRange());
+            listeners.call ([this] (Listener& l) { l.legacyModeChanged (true,
+                                                                        legacyPitchbendRange.getText().getIntValue(),
+                                                                        getLegacyModeChannelRange()); });
         }
         else
         {
@@ -330,6 +329,3 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MPESetupComponent)
 
 };
-
-
-#endif  // MPESETUPCOMPONENT_H_INCLUDED

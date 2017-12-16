@@ -2,29 +2,32 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2015 - ROLI Ltd.
+   Copyright (c) 2017 - ROLI Ltd.
 
-   Permission is granted to use this software under the terms of either:
-   a) the GPL v2 (or any later version)
-   b) the Affero GPL v3
+   JUCE is an open source library subject to commercial or open-source
+   licensing.
 
-   Details of these licenses can be found at: www.gnu.org/licenses
+   By using JUCE, you agree to the terms of both the JUCE 5 End-User License
+   Agreement and JUCE 5 Privacy Policy (both updated and effective as of the
+   27th April 2017).
 
-   JUCE is distributed in the hope that it will be useful, but WITHOUT ANY
-   WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
-   A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+   End User License Agreement: www.juce.com/juce-5-licence
+   Privacy Policy: www.juce.com/juce-5-privacy-policy
 
-   ------------------------------------------------------------------------------
+   Or: You may also use this code under the terms of the GPL v3 (see
+   www.gnu.org/licenses).
 
-   To release a closed-source product which uses JUCE, commercial licenses are
-   available: visit www.juce.com for more information.
+   JUCE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY, AND ALL WARRANTIES, WHETHER
+   EXPRESSED OR IMPLIED, INCLUDING MERCHANTABILITY AND FITNESS FOR PURPOSE, ARE
+   DISCLAIMED.
 
   ==============================================================================
 */
 
-#include "../jucer_Headers.h"
-#include "../Project/jucer_Project.h"
+#include "jucer_Headers.h"
 #include "../Project/jucer_Module.h"
+#include "../Utility/Helpers/jucer_TranslationHelpers.h"
+
 #include "jucer_CommandLine.h"
 
 
@@ -89,7 +92,7 @@ namespace
     {
         Array<File> files;
 
-        for (DirectoryIterator di (folder, true, "*.cpp;*.cxx;*.cc;*.c;*.h;*.hpp;*.hxx;*.hpp;*.mm;*.m", File::findFiles); di.next();)
+        for (DirectoryIterator di (folder, true, "*.cpp;*.cxx;*.cc;*.c;*.h;*.hpp;*.hxx;*.hpp;*.mm;*.m;*.java;", File::findFiles); di.next();)
             if (! di.getFile().isSymbolicLink())
                 files.add (di.getFile());
 
@@ -133,7 +136,7 @@ namespace
 
             if (! project->loadFrom (projectFile, true))
             {
-                project = nullptr;
+                project.reset();
                 throw CommandLineError ("Failed to load the project file: " + projectFile.getFullPathName());
             }
         }
@@ -145,7 +148,7 @@ namespace
                 Result error (justSaveResources ? project->saveResourcesOnly (project->getFile())
                                                 : project->saveProject (project->getFile(), true));
 
-                project = nullptr;
+                project.reset();
 
                 if (error.failed())
                     throw CommandLineError ("Error when saving: " + error.getErrorMessage());
@@ -299,7 +302,7 @@ namespace
         ScopedPointer<FileOutputStream> out (temp.getFile().createOutputStream());
 
         bool ok = out != nullptr && zip.writeToStream (*out, nullptr);
-        out = nullptr;
+        out.reset();
         ok = ok && temp.overwriteTargetFileWithTemporary();
 
         if (! ok)
@@ -359,7 +362,7 @@ namespace
     {
         const String content (file.loadFileAsString());
 
-        if (content.contains ("%%") && content.contains ("//["))
+        if (content.contains ("%""%") && content.contains ("//["))
             return; // ignore projucer GUI template files
 
         StringArray lines;
@@ -379,7 +382,7 @@ namespace
                     const int tabPos = line.indexOfChar ('\t');
                     if (tabPos < 0)
                         break;
-                    
+
                     const int spacesPerTab = 4;
                     const int spacesNeeded = spacesPerTab - (tabPos % spacesPerTab);
                     line = line.replaceSection (tabPos, 1, String::repeatedString (" ", spacesNeeded));
@@ -421,17 +424,20 @@ namespace
     {
         checkArgumentCount (args, 2);
 
-        const File target (getFileCheckingForExistence (args[1]));
+        for (auto it = args.begin() + 1; it < args.end(); ++it)
+        {
+            const File target (getFileCheckingForExistence (*it));
 
-        Array<File> files;
+            Array<File> files;
 
-        if (target.isDirectory())
-            files = findAllSourceFiles (target);
-        else
-            files.add (target);
+            if (target.isDirectory())
+                files = findAllSourceFiles (target);
+            else
+                files.add (target);
 
-        for (int i = 0; i < files.size(); ++i)
-            cleanWhitespace (files.getReference(i), options);
+            for (int i = 0; i < files.size(); ++i)
+                cleanWhitespace (files.getReference(i), options);
+        }
     }
 
     static void cleanWhitespace (const StringArray& args, bool replaceTabs)
@@ -451,14 +457,12 @@ namespace
     {
         File result;
 
-        for (int i = 0; i < allFiles.size(); ++i)
+        for (auto& f : allFiles)
         {
-            const File& f = allFiles.getReference(i);
-
             if (f.getFileName().equalsIgnoreCase (name) && f != sourceFile)
             {
                 if (result.exists())
-                    return File(); // multiple possible results, so don't change it!
+                    return {}; // multiple possible results, so don't change it!
 
                 result = f;
             }
@@ -541,7 +545,7 @@ namespace
     static void generateObfuscatedStringCode (const StringArray& args)
     {
         checkArgumentCount (args, 2);
-        const String originalText (args[1]);
+        const String originalText (args[1].unquoted());
 
         struct Section
         {
@@ -597,6 +601,161 @@ namespace
         std::cout << out.toString() << std::endl;
     }
 
+    static void scanFoldersForTranslationFiles (const StringArray& args)
+    {
+        checkArgumentCount (args, 2);
+
+        StringArray translations;
+
+        for (auto it = args.begin() + 1; it != args.end(); ++it)
+        {
+            const File directoryToSearch (getDirectoryCheckingForExistence (*it));
+            TranslationHelpers::scanFolderForTranslations (translations, directoryToSearch);
+        }
+
+        std::cout << TranslationHelpers::mungeStrings (translations) << std::endl;
+    }
+
+    static void createFinishedTranslationFile (const StringArray& args)
+    {
+        checkArgumentCount (args, 3);
+
+        auto preTranslated  = getFileCheckingForExistence (args[1]).loadFileAsString();
+        auto postTranslated = getFileCheckingForExistence (args[2]).loadFileAsString();
+
+        auto localisedContent = (args.size() > 3 ? getFileCheckingForExistence (args[3]).loadFileAsString() : String());
+        auto localised        = LocalisedStrings (localisedContent, false);
+
+        using TH = TranslationHelpers;
+        std::cout << TH::createFinishedTranslationFile (TH::withTrimmedEnds (TH::breakApart (preTranslated)),
+                                                        TH::withTrimmedEnds (TH::breakApart (postTranslated)),
+                                                        localised) << std::endl;
+    }
+
+    //==============================================================================
+    static void encodeBinary (const StringArray& args)
+    {
+        checkArgumentCount (args, 3);
+        const File source (getFileCheckingForExistence (args[1]));
+        const File target (getFile (args[2]));
+
+        MemoryOutputStream literal;
+        size_t dataSize = 0;
+
+        {
+            MemoryBlock data;
+            FileInputStream input (source);
+            input.readIntoMemoryBlock (data);
+            CodeHelpers::writeDataAsCppLiteral (data, literal, true, true);
+            dataSize = data.getSize();
+        }
+
+        auto variableName = CodeHelpers::makeBinaryDataIdentifierName (source);
+
+        MemoryOutputStream header, cpp;
+
+        header << "// Auto-generated binary data by the Projucer" << newLine
+               << "// Source file: " << source.getRelativePathFrom (target.getParentDirectory()) << newLine
+               << newLine;
+
+        cpp << header.toString();
+
+        if (target.hasFileExtension (headerFileExtensions))
+        {
+            header << "static constexpr unsigned char " << variableName << "[] =" << newLine
+                   << literal.toString() << newLine
+                   << newLine;
+
+            replaceFile (target, header.toString(), "Writing: ");
+        }
+        else if (target.hasFileExtension (cppFileExtensions))
+        {
+            header << "extern const char*  " << variableName << ";" << newLine
+                   << "const unsigned int  " << variableName << "Size = " << (int) dataSize << ";" << newLine
+                   << newLine;
+
+            cpp << CodeHelpers::createIncludeStatement (target.withFileExtension (".h").getFileName()) << newLine
+                << newLine
+                << "static constexpr unsigned char " << variableName << "_local[] =" << newLine
+                << literal.toString() << newLine
+                << newLine
+                << "const char* " << variableName << " = (const char*) " << variableName << "_local;" << newLine;
+
+            replaceFile (target, cpp.toString(), "Writing: ");
+            replaceFile (target.withFileExtension (".h"), header.toString(), "Writing: ");
+        }
+        else
+        {
+            throw CommandLineError ("You need to specify a .h or .cpp file as the target");
+        }
+    }
+
+    //==============================================================================
+    static bool isThisOS (const String& os)
+    {
+        auto targetOS = TargetOS::unknown;
+
+        if      (os == "osx")        targetOS = TargetOS::osx;
+        else if (os == "windows")    targetOS = TargetOS::windows;
+        else if (os == "linux")      targetOS = TargetOS::linux;
+
+        if (targetOS == TargetOS::unknown)
+            throw CommandLineError ("You need to specify a valid OS! Use osx, windows or linux");
+
+        return targetOS == TargetOS::getThisOS();
+    }
+
+    static bool isValidPathIdentifier (const String& id, const String& os)
+    {
+        return id == "vst3Path" || (id == "aaxPath" && os != "linux") || (id == "rtasPath" && os != "linux")
+            || id == "androidSDKPath" || id == "androidNDKPath" || id == "defaultJuceModulePath" || id == "defaultUserModulePath";
+    }
+
+    static void setGlobalPath (const StringArray& args)
+    {
+        checkArgumentCount (args, 3);
+
+        if (! isValidPathIdentifier (args[2], args[1]))
+            throw CommandLineError ("Identifier " + args[2] + " is not valid for the OS " + args[1]);
+
+        auto userAppData = File::getSpecialLocation (File::userApplicationDataDirectory);
+
+       #if JUCE_MAC
+        userAppData = userAppData.getChildFile ("Application Support");
+       #endif
+
+        auto settingsFile = userAppData.getChildFile ("Projucer").getChildFile ("Projucer.settings");
+
+        if (! settingsFile.existsAsFile())
+            throw CommandLineError ("Expected settings file at " + settingsFile.getFullPathName() + " not found!");
+
+        ScopedPointer<XmlElement> xml (XmlDocument::parse (settingsFile));
+        auto settingsTree = ValueTree::fromXml (*xml);
+
+        if (! settingsTree.isValid())
+            throw CommandLineError ("Settings file not valid!");
+
+        ValueTree childToSet;
+        if (isThisOS (args[1]))
+        {
+            childToSet = settingsTree.getChildWithProperty (Ids::name, "PROJECT_DEFAULT_SETTINGS")
+                                     .getChildWithName ("PROJECT_DEFAULT_SETTINGS");
+        }
+        else
+        {
+            childToSet = settingsTree.getChildWithProperty (Ids::name, "FALLBACK_PATHS")
+                                     .getChildWithName ("FALLBACK_PATHS")
+                                     .getChildWithName (args[1] + String ("Fallback"));
+        }
+
+        if (! childToSet.isValid())
+            throw CommandLineError ("Failed to set the requested setting!");
+
+        childToSet.setProperty (args[2], args[3], nullptr);
+
+        settingsFile.replaceWithText (settingsTree.toXmlString());
+    }
+
     //==============================================================================
     static void showHelp()
     {
@@ -649,6 +808,19 @@ namespace
                   << std::endl
                   << " " << appName << " --obfuscated-string-code string_to_obfuscate" << std::endl
                   << "    Generates a C++ function which returns the given string, but in an obfuscated way." << std::endl
+                  << std::endl
+                  << " " << appName << " --encode-binary source_binary_file target_cpp_file" << std::endl
+                  << "    Converts a binary file to a C++ file containing its contents as a block of data. Provide a .h file as the target if you want a single output file, or a .cpp file if you want a pair of .h/.cpp files." << std::endl
+                  << std::endl
+                  << " " << appName << " --trans target_folders..." << std::endl
+                  << "    Scans each of the given folders (recursively) for any NEEDS_TRANS macros, and generates a translation file that can be used with Projucer's translation file builder" << std::endl
+                  << std::endl
+                  << " " << appName << " --trans-finish pre_translated_file post_translated_file optional_existing_translation_file" << std::endl
+                  << "    Creates a completed translations mapping file, that can be used to initialise a LocalisedStrings object. This allows you to localise the strings in your project" << std::endl
+                  << std::endl
+                  << " " << appName << " --set-global-search-path os identifier_to_set new_path" << std::endl
+                  << "    Sets the global search path for a specified os and identifier. The os should be either osx, windows or linux and the identifiers can be any of the following: "
+                  << "defaultJuceModulePath, defaultUserModulePath, vst3path, aaxPath (not valid on linux), rtasPath (not valid on linux), androidSDKPath or androidNDKPath." << std::endl
                   << std::endl;
     }
 }
@@ -664,22 +836,26 @@ int performCommandLine (const String& commandLine)
 
     try
     {
-        if (matchArgument (command, "help"))                     { showHelp(); return 0; }
-        if (matchArgument (command, "h"))                        { showHelp(); return 0; }
-        if (matchArgument (command, "resave"))                   { resaveProject (args, false); return 0; }
-        if (matchArgument (command, "resave-resources"))         { resaveProject (args, true); return 0; }
-        if (matchArgument (command, "get-version"))              { getVersion (args); return 0; }
-        if (matchArgument (command, "set-version"))              { setVersion (args); return 0; }
-        if (matchArgument (command, "bump-version"))             { bumpVersion (args); return 0; }
-        if (matchArgument (command, "git-tag-version"))          { gitTag (args); return 0; }
-        if (matchArgument (command, "buildmodule"))              { buildModules (args, false); return 0; }
-        if (matchArgument (command, "buildallmodules"))          { buildModules (args, true); return 0; }
-        if (matchArgument (command, "status"))                   { showStatus (args); return 0; }
-        if (matchArgument (command, "trim-whitespace"))          { cleanWhitespace (args, false); return 0; }
-        if (matchArgument (command, "remove-tabs"))              { cleanWhitespace (args, true); return 0; }
-        if (matchArgument (command, "tidy-divider-comments"))    { tidyDividerComments (args); return 0; }
-        if (matchArgument (command, "fix-broken-include-paths")) { fixRelativeIncludePaths (args); return 0; }
-        if (matchArgument (command, "obfuscated-string-code"))   { generateObfuscatedStringCode (args); return 0; }
+        if (matchArgument (command, "help"))                     { showHelp();                            return 0; }
+        if (matchArgument (command, "h"))                        { showHelp();                            return 0; }
+        if (matchArgument (command, "resave"))                   { resaveProject (args, false);           return 0; }
+        if (matchArgument (command, "resave-resources"))         { resaveProject (args, true);            return 0; }
+        if (matchArgument (command, "get-version"))              { getVersion (args);                     return 0; }
+        if (matchArgument (command, "set-version"))              { setVersion (args);                     return 0; }
+        if (matchArgument (command, "bump-version"))             { bumpVersion (args);                    return 0; }
+        if (matchArgument (command, "git-tag-version"))          { gitTag (args);                         return 0; }
+        if (matchArgument (command, "buildmodule"))              { buildModules (args, false);            return 0; }
+        if (matchArgument (command, "buildallmodules"))          { buildModules (args, true);             return 0; }
+        if (matchArgument (command, "status"))                   { showStatus (args);                     return 0; }
+        if (matchArgument (command, "trim-whitespace"))          { cleanWhitespace (args, false);         return 0; }
+        if (matchArgument (command, "remove-tabs"))              { cleanWhitespace (args, true);          return 0; }
+        if (matchArgument (command, "tidy-divider-comments"))    { tidyDividerComments (args);            return 0; }
+        if (matchArgument (command, "fix-broken-include-paths")) { fixRelativeIncludePaths (args);        return 0; }
+        if (matchArgument (command, "obfuscated-string-code"))   { generateObfuscatedStringCode (args);   return 0; }
+        if (matchArgument (command, "encode-binary"))            { encodeBinary (args);                   return 0; }
+        if (matchArgument (command, "trans"))                    { scanFoldersForTranslationFiles (args); return 0; }
+        if (matchArgument (command, "trans-finish"))             { createFinishedTranslationFile (args);  return 0; }
+        if (matchArgument (command, "set-global-search-path"))   { setGlobalPath (args);                  return 0; }
     }
     catch (const CommandLineError& error)
     {

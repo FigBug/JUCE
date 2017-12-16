@@ -2,22 +2,24 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2015 - ROLI Ltd.
+   Copyright (c) 2017 - ROLI Ltd.
 
-   Permission is granted to use this software under the terms of either:
-   a) the GPL v2 (or any later version)
-   b) the Affero GPL v3
+   JUCE is an open source library subject to commercial or open-source
+   licensing.
 
-   Details of these licenses can be found at: www.gnu.org/licenses
+   By using JUCE, you agree to the terms of both the JUCE 5 End-User License
+   Agreement and JUCE 5 Privacy Policy (both updated and effective as of the
+   27th April 2017).
 
-   JUCE is distributed in the hope that it will be useful, but WITHOUT ANY
-   WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
-   A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+   End User License Agreement: www.juce.com/juce-5-licence
+   Privacy Policy: www.juce.com/juce-5-privacy-policy
 
-   ------------------------------------------------------------------------------
+   Or: You may also use this code under the terms of the GPL v3 (see
+   www.gnu.org/licenses).
 
-   To release a closed-source product which uses JUCE, commercial licenses are
-   available: visit www.juce.com for more information.
+   JUCE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY, AND ALL WARRANTIES, WHETHER
+   EXPRESSED OR IMPLIED, INCLUDING MERCHANTABILITY AND FITNESS FOR PURPOSE, ARE
+   DISCLAIMED.
 
   ==============================================================================
 */
@@ -297,7 +299,7 @@ struct FlockDemo  : public BackgroundLogo
             {
                 const float regionSize = high - low;
                 const float adjustedProportion = (proportion - low) / regionSize;
-                const float F = (0.5f - cos (adjustedProportion * float_Pi * 2.0f) * 0.5f + 0.5f) * strength;
+                const float F = (0.5f - std::cos (adjustedProportion * MathConstants<float>::twoPi) * 0.5f + 0.5f) * strength;
 
                 b1.accelerate (getVectorWithLength (b2.velocity, F));
                 b2.accelerate (getVectorWithLength (b1.velocity, F));
@@ -306,7 +308,7 @@ struct FlockDemo  : public BackgroundLogo
             {
                 const float regionSize = 1.0f - high;
                 const float adjustedProportion = (proportion - high) / regionSize;
-                const float F = (0.5f - cos (adjustedProportion * float_Pi * 2.0f) * 0.5f + 0.5f) * strength;
+                const float F = (0.5f - std::cos (adjustedProportion * MathConstants<float>::twoPi) * 0.5f + 0.5f) * strength;
                 delta = getVectorWithLength (delta, F);
 
                 b1.accelerate (-delta);

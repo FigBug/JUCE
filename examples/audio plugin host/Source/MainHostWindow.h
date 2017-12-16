@@ -2,28 +2,29 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2015 - ROLI Ltd.
+   Copyright (c) 2017 - ROLI Ltd.
 
-   Permission is granted to use this software under the terms of either:
-   a) the GPL v2 (or any later version)
-   b) the Affero GPL v3
+   JUCE is an open source library subject to commercial or open-source
+   licensing.
 
-   Details of these licenses can be found at: www.gnu.org/licenses
+   By using JUCE, you agree to the terms of both the JUCE 5 End-User License
+   Agreement and JUCE 5 Privacy Policy (both updated and effective as of the
+   27th April 2017).
 
-   JUCE is distributed in the hope that it will be useful, but WITHOUT ANY
-   WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
-   A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+   End User License Agreement: www.juce.com/juce-5-licence
+   Privacy Policy: www.juce.com/juce-5-privacy-policy
 
-   ------------------------------------------------------------------------------
+   Or: You may also use this code under the terms of the GPL v3 (see
+   www.gnu.org/licenses).
 
-   To release a closed-source product which uses JUCE, commercial licenses are
-   available: visit www.juce.com for more information.
+   JUCE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY, AND ALL WARRANTIES, WHETHER
+   EXPRESSED OR IMPLIED, INCLUDING MERCHANTABILITY AND FITNESS FOR PURPOSE, ARE
+   DISCLAIMED.
 
   ==============================================================================
 */
 
-#ifndef __MAINHOSTWINDOW_JUCEHEADER__
-#define __MAINHOSTWINDOW_JUCEHEADER__
+#pragma once
 
 #include "FilterGraph.h"
 #include "GraphEditorPanel.h"
@@ -47,8 +48,6 @@ ApplicationCommandManager& getCommandManager();
 ApplicationProperties& getAppProperties();
 
 //==============================================================================
-/**
-*/
 class MainHostWindow    : public DocumentWindow,
                           public MenuBarModel,
                           public ApplicationCommandTarget,
@@ -61,43 +60,43 @@ public:
     ~MainHostWindow();
 
     //==============================================================================
-    void closeButtonPressed();
-    void changeListenerCallback (ChangeBroadcaster*);
+    void closeButtonPressed() override;
+    void changeListenerCallback (ChangeBroadcaster*) override;
 
-    bool isInterestedInFileDrag (const StringArray& files);
-    void fileDragEnter (const StringArray& files, int, int);
-    void fileDragMove (const StringArray& files, int, int);
-    void fileDragExit (const StringArray& files);
-    void filesDropped (const StringArray& files, int, int);
+    bool isInterestedInFileDrag (const StringArray& files) override;
+    void fileDragEnter (const StringArray& files, int, int) override;
+    void fileDragMove (const StringArray& files, int, int) override;
+    void fileDragExit (const StringArray& files) override;
+    void filesDropped (const StringArray& files, int, int) override;
 
-    void menuBarActivated (bool isActive);
+    void menuBarActivated (bool isActive) override;
 
-    StringArray getMenuBarNames();
-    PopupMenu getMenuForIndex (int topLevelMenuIndex, const String& menuName);
-    void menuItemSelected (int menuItemID, int topLevelMenuIndex);
-    ApplicationCommandTarget* getNextCommandTarget();
-    void getAllCommands (Array <CommandID>& commands);
-    void getCommandInfo (CommandID commandID, ApplicationCommandInfo& result);
-    bool perform (const InvocationInfo& info);
+    StringArray getMenuBarNames() override;
+    PopupMenu getMenuForIndex (int topLevelMenuIndex, const String& menuName) override;
+    void menuItemSelected (int menuItemID, int topLevelMenuIndex) override;
+    ApplicationCommandTarget* getNextCommandTarget() override;
+    void getAllCommands (Array<CommandID>&) override;
+    void getCommandInfo (CommandID, ApplicationCommandInfo&) override;
+    bool perform (const InvocationInfo&) override;
 
-    bool tryToQuitApplication();
+    void tryToQuitApplication();
 
-    void createPlugin (const PluginDescription* desc, int x, int y);
+    void createPlugin (const PluginDescription&, Point<int> pos);
 
-    void addPluginsToMenu (PopupMenu& m) const;
-    const PluginDescription* getChosenType (const int menuID) const;
-
-    GraphDocumentComponent* getGraphEditor() const;
+    void addPluginsToMenu (PopupMenu&) const;
+    const PluginDescription* getChosenType (int menuID) const;
 
     bool isDoublePrecisionProcessing();
     void updatePrecisionMenuItem (ApplicationCommandInfo& info);
+
+    ScopedPointer<GraphDocumentComponent> graphHolder;
 
 private:
     //==============================================================================
     AudioDeviceManager deviceManager;
     AudioPluginFormatManager formatManager;
 
-    OwnedArray <PluginDescription> internalTypes;
+    OwnedArray<PluginDescription> internalTypes;
     KnownPluginList knownPluginList;
     KnownPluginList::SortMethod pluginSortMethod;
 
@@ -108,6 +107,3 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainHostWindow)
 };
-
-
-#endif   // __MAINHOSTWINDOW_JUCEHEADER__

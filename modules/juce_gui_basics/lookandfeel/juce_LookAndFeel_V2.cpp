@@ -2,25 +2,30 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2015 - ROLI Ltd.
+   Copyright (c) 2017 - ROLI Ltd.
 
-   Permission is granted to use this software under the terms of either:
-   a) the GPL v2 (or any later version)
-   b) the Affero GPL v3
+   JUCE is an open source library subject to commercial or open-source
+   licensing.
 
-   Details of these licenses can be found at: www.gnu.org/licenses
+   By using JUCE, you agree to the terms of both the JUCE 5 End-User License
+   Agreement and JUCE 5 Privacy Policy (both updated and effective as of the
+   27th April 2017).
 
-   JUCE is distributed in the hope that it will be useful, but WITHOUT ANY
-   WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
-   A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+   End User License Agreement: www.juce.com/juce-5-licence
+   Privacy Policy: www.juce.com/juce-5-privacy-policy
 
-   ------------------------------------------------------------------------------
+   Or: You may also use this code under the terms of the GPL v3 (see
+   www.gnu.org/licenses).
 
-   To release a closed-source product which uses JUCE, commercial licenses are
-   available: visit www.juce.com for more information.
+   JUCE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY, AND ALL WARRANTIES, WHETHER
+   EXPRESSED OR IMPLIED, INCLUDING MERCHANTABILITY AND FITNESS FOR PURPOSE, ARE
+   DISCLAIMED.
 
   ==============================================================================
 */
+
+namespace juce
+{
 
 namespace LookAndFeelHelpers
 {
@@ -107,6 +112,7 @@ LookAndFeel_V2::LookAndFeel_V2()
         ComboBox::textColourId,                     0xff000000,
         ComboBox::backgroundColourId,               0xffffffff,
         ComboBox::arrowColourId,                    0x99000000,
+        ComboBox::focusedOutlineColourId,           0xffbbbbff,
 
         PropertyComponent::backgroundColourId,      0x66ffffff,
         PropertyComponent::labelTextColourId,       0xff000000,
@@ -171,8 +177,14 @@ LookAndFeel_V2::LookAndFeel_V2()
         BubbleComponent::backgroundColourId,        0xeeeeeebb,
         BubbleComponent::outlineColourId,           0x77000000,
 
-        DirectoryContentsDisplayComponent::highlightColourId,   textHighlightColour,
-        DirectoryContentsDisplayComponent::textColourId,        0xff000000,
+        TableHeaderComponent::textColourId,         0xff000000,
+        TableHeaderComponent::backgroundColourId,   0xffe8ebf9,
+        TableHeaderComponent::outlineColourId,      0x33000000,
+        TableHeaderComponent::highlightColourId,    0x8899aadd,
+
+        DirectoryContentsDisplayComponent::highlightColourId,              textHighlightColour,
+        DirectoryContentsDisplayComponent::textColourId,                   0xff000000,
+        DirectoryContentsDisplayComponent::highlightedTextColourId,        0xff000000,
 
         0x1000440, /*LassoComponent::lassoFillColourId*/        0x66dddddd,
         0x1000441, /*LassoComponent::lassoOutlineColourId*/     0x99111111,
@@ -202,6 +214,19 @@ LookAndFeel_V2::LookAndFeel_V2()
         FileSearchPathListComponent::backgroundColourId,        0xffffffff,
 
         FileChooserDialogBox::titleTextColourId,                0xff000000,
+
+        SidePanel::backgroundColour,                            0xffffffff,
+        SidePanel::titleTextColour,                             0xff000000,
+        SidePanel::shadowBaseColour,                            0xff000000,
+        SidePanel::dismissButtonNormalColour,                   textButtonColour,
+        SidePanel::dismissButtonOverColour,                     textButtonColour,
+        SidePanel::dismissButtonDownColour,                     0xff4444ff,
+
+        FileBrowserComponent::currentPathBoxBackgroundColourId,    0xffffffff,
+        FileBrowserComponent::currentPathBoxTextColourId,          0xff000000,
+        FileBrowserComponent::currentPathBoxArrowColourId,         0x99000000,
+        FileBrowserComponent::filenameBoxBackgroundColourId,       0xffffffff,
+        FileBrowserComponent::filenameBoxTextColourId,             0xff000000,
     };
 
     for (int i = 0; i < numElementsInArray (standardColours); i += 2)
@@ -334,11 +359,9 @@ void LookAndFeel_V2::drawToggleButton (Graphics& g, ToggleButton& button,
     if (! button.isEnabled())
         g.setOpacity (0.5f);
 
-    const int textX = (int) tickWidth + 5;
-
     g.drawFittedText (button.getButtonText(),
-                      textX, 0,
-                      button.getWidth() - textX - 2, button.getHeight(),
+                      button.getLocalBounds().withTrimmedLeft (roundToInt (tickWidth) + 5)
+                                             .withTrimmedRight (2),
                       Justification::centredLeft, 10);
 }
 
@@ -600,11 +623,16 @@ void LookAndFeel_V2::drawSpinningWaitAnimation (Graphics& g, const Colour& colou
     for (uint32 i = 0; i < 12; ++i)
     {
         const uint32 n = (i + 12 - animationIndex) % 12;
-        g.setColour (colour.withMultipliedAlpha ((n + 1) / 12.0f));
 
-        g.fillPath (p, AffineTransform::rotation (i * (float_Pi / 6.0f))
+        g.setColour (colour.withMultipliedAlpha ((n + 1) / 12.0f));
+        g.fillPath (p, AffineTransform::rotation (i * (MathConstants<float>::pi / 6.0f))
                                        .translated (cx, cy));
     }
+}
+
+bool LookAndFeel_V2::isProgressBarOpaque (ProgressBar& progressBar)
+{
+    return progressBar.findColour (ProgressBar::backgroundColourId).isOpaque();
 }
 
 bool LookAndFeel_V2::areScrollbarButtonsVisible()
@@ -823,22 +851,22 @@ void LookAndFeel_V2::drawTreeviewPlusMinusBox (Graphics& g, const Rectangle<floa
 
     const int x = ((int) area.getWidth()  - boxSize) / 2 + (int) area.getX();
     const int y = ((int) area.getHeight() - boxSize) / 2 + (int) area.getY();
-    const int w = boxSize;
-    const int h = boxSize;
+
+    Rectangle<float> boxArea ((float) x, (float) y, (float) boxSize, (float) boxSize);
 
     g.setColour (Colour (0xe5ffffff));
-    g.fillRect (x, y, w, h);
+    g.fillRect (boxArea);
 
     g.setColour (Colour (0x80000000));
-    g.drawRect (x, y, w, h);
+    g.drawRect (boxArea);
 
     const float size = boxSize / 2 + 1.0f;
     const float centre = (float) (boxSize / 2);
 
-    g.fillRect (x + (w - size) * 0.5f, y + centre, size, 1.0f);
+    g.fillRect (x + (boxSize - size) * 0.5f, y + centre, size, 1.0f);
 
     if (! isOpen)
-        g.fillRect (x + centre, y + (h - size) * 0.5f, 1.0f, size);
+        g.fillRect (x + centre, y + (boxSize - size) * 0.5f, 1.0f, size);
 }
 
 bool LookAndFeel_V2::areLinesDrawnForTreeView (TreeView&)
@@ -1097,6 +1125,10 @@ Component* LookAndFeel_V2::getParentComponentForMenuOptions (const PopupMenu::Op
 
 void LookAndFeel_V2::preparePopupMenuWindow (Component&) {}
 
+bool LookAndFeel_V2::shouldPopupMenuScaleWithTargetComponent (const PopupMenu::Options&)    { return true; }
+
+int LookAndFeel_V2::getPopupMenuBorderSize()    { return 2; }
+
 //==============================================================================
 void LookAndFeel_V2::fillTextEditorBackground (Graphics& g, int /*width*/, int /*height*/, TextEditor& textEditor)
 {
@@ -1143,7 +1175,7 @@ void LookAndFeel_V2::drawComboBox (Graphics& g, int width, int height, const boo
 
     if (box.isEnabled() && box.hasKeyboardFocus (false))
     {
-        g.setColour (box.findColour (ComboBox::buttonColourId));
+        g.setColour (box.findColour (ComboBox::focusedOutlineColourId));
         g.drawRect (0, 0, width, height, 2);
     }
     else
@@ -1256,8 +1288,7 @@ void LookAndFeel_V2::drawLinearSliderBackground (Graphics& g, int x, int y, int 
         const float iy = y + height * 0.5f - sliderRadius * 0.5f;
         const float ih = sliderRadius;
 
-        g.setGradientFill (ColourGradient (gradCol1, 0.0f, iy,
-                                           gradCol2, 0.0f, iy + ih, false));
+        g.setGradientFill (ColourGradient::vertical (gradCol1, iy, gradCol2, iy + ih));
 
         indent.addRoundedRectangle (x - sliderRadius * 0.5f, iy,
                                     width + sliderRadius, ih,
@@ -1268,8 +1299,7 @@ void LookAndFeel_V2::drawLinearSliderBackground (Graphics& g, int x, int y, int 
         const float ix = x + width * 0.5f - sliderRadius * 0.5f;
         const float iw = sliderRadius;
 
-        g.setGradientFill (ColourGradient (gradCol1, ix, 0.0f,
-                                           gradCol2, ix + iw, 0.0f, false));
+        g.setGradientFill (ColourGradient::horizontal (gradCol1, ix, gradCol2, ix + iw));
 
         indent.addRoundedRectangle (ix, y - sliderRadius * 0.5f,
                                     iw, height + sliderRadius,
@@ -1475,14 +1505,14 @@ Button* LookAndFeel_V2::createSliderButton (Slider&, const bool isIncrement)
 class LookAndFeel_V2::SliderLabelComp  : public Label
 {
 public:
-    SliderLabelComp() : Label (String(), String()) {}
+    SliderLabelComp() : Label ({}, {}) {}
 
-    void mouseWheelMove (const MouseEvent&, const MouseWheelDetails&) {}
+    void mouseWheelMove (const MouseEvent&, const MouseWheelDetails&) override {}
 };
 
 Label* LookAndFeel_V2::createSliderTextBox (Slider& slider)
 {
-    Label* const l = new SliderLabelComp();
+    auto l = new SliderLabelComp();
 
     l->setJustificationType (Justification::centred);
     l->setKeyboardType (TextInputTarget::decimalKeyboard);
@@ -1629,7 +1659,7 @@ void LookAndFeel_V2::layoutFilenameComponent (FilenameComponent& filenameComp,
 {
     browseButton->setSize (80, filenameComp.getHeight());
 
-    if (TextButton* const tb = dynamic_cast<TextButton*> (browseButton))
+    if (auto* tb = dynamic_cast<TextButton*> (browseButton))
         tb->changeWidthToFitText();
 
     browseButton->setTopRightPosition (filenameComp.getWidth(), 0);
@@ -1748,10 +1778,8 @@ void LookAndFeel_V2::drawDocumentWindowTitleBar (DocumentWindow& window, Graphic
 
     const bool isActive = window.isActiveWindow();
 
-    g.setGradientFill (ColourGradient (window.getBackgroundColour(),
-                                       0.0f, 0.0f,
-                                       window.getBackgroundColour().contrasting (isActive ? 0.15f : 0.05f),
-                                       0.0f, (float) h, false));
+    g.setGradientFill (ColourGradient::vertical (window.getBackgroundColour(), 0,
+                                                 window.getBackgroundColour().contrasting (isActive ? 0.15f : 0.05f), (float) h));
     g.fillAll();
 
     Font font (h * 0.65f, Font::bold);
@@ -1996,16 +2024,16 @@ void LookAndFeel_V2::drawGroupComponentOutline (Graphics& g, int width, int heig
     p.startNewSubPath (x + textX + textW, y);
     p.lineTo (x + w - cs, y);
 
-    p.addArc (x + w - cs2, y, cs2, cs2, 0, float_Pi * 0.5f);
+    p.addArc (x + w - cs2, y, cs2, cs2, 0, MathConstants<float>::halfPi);
     p.lineTo (x + w, y + h - cs);
 
-    p.addArc (x + w - cs2, y + h - cs2, cs2, cs2, float_Pi * 0.5f, float_Pi);
+    p.addArc (x + w - cs2, y + h - cs2, cs2, cs2, MathConstants<float>::halfPi, MathConstants<float>::pi);
     p.lineTo (x + cs, y + h);
 
-    p.addArc (x, y + h - cs2, cs2, cs2, float_Pi, float_Pi * 1.5f);
+    p.addArc (x, y + h - cs2, cs2, cs2, MathConstants<float>::pi, MathConstants<float>::pi * 1.5f);
     p.lineTo (x, y + cs);
 
-    p.addArc (x, y, cs2, cs2, float_Pi * 1.5f, float_Pi * 2.0f);
+    p.addArc (x, y, cs2, cs2, MathConstants<float>::pi * 1.5f, MathConstants<float>::twoPi);
     p.lineTo (x + textX, y);
 
     const float alpha = group.isEnabled() ? 1.0f : 0.5f;
@@ -2041,7 +2069,7 @@ int LookAndFeel_V2::getTabButtonBestWidth (TabBarButton& button, int tabDepth)
     int width = Font (tabDepth * 0.6f).getStringWidth (button.getButtonText().trim())
                    + getTabButtonOverlap (tabDepth) * 2;
 
-    if (Component* const extraComponent = button.getExtraComponent())
+    if (auto* extraComponent = button.getExtraComponent())
         width += button.getTabbedButtonBar().isVertical() ? extraComponent->getHeight()
                                                           : extraComponent->getWidth();
 
@@ -2052,7 +2080,7 @@ Rectangle<int> LookAndFeel_V2::getTabButtonExtraComponentBounds (const TabBarBut
 {
     Rectangle<int> extraComp;
 
-    const TabbedButtonBar::Orientation orientation = button.getTabbedButtonBar().getOrientation();
+    auto orientation = button.getTabbedButtonBar().getOrientation();
 
     if (button.getExtraComponentPlacement() == TabBarButton::beforeText)
     {
@@ -2082,7 +2110,7 @@ Rectangle<int> LookAndFeel_V2::getTabButtonExtraComponentBounds (const TabBarBut
 
 void LookAndFeel_V2::createTabButtonShape (TabBarButton& button, Path& p, bool /*isMouseOver*/, bool /*isMouseDown*/)
 {
-    const Rectangle<int> activeArea (button.getActiveArea());
+    auto activeArea = button.getActiveArea();
     const float w = (float) activeArea.getWidth();
     const float h = (float) activeArea.getHeight();
 
@@ -2142,7 +2170,7 @@ void LookAndFeel_V2::createTabButtonShape (TabBarButton& button, Path& p, bool /
 void LookAndFeel_V2::fillTabButtonShape (TabBarButton& button, Graphics& g, const Path& path,
                                          bool /*isMouseOver*/, bool /*isMouseDown*/)
 {
-    const Colour tabBackground (button.getTabBackgroundColour());
+    auto tabBackground = button.getTabBackgroundColour();
     const bool isFrontTab = button.isFrontTab();
 
     g.setColour (isFrontTab ? tabBackground
@@ -2157,6 +2185,11 @@ void LookAndFeel_V2::fillTabButtonShape (TabBarButton& button, Graphics& g, cons
     g.strokePath (path, PathStrokeType (isFrontTab ? 1.0f : 0.5f));
 }
 
+Font LookAndFeel_V2::getTabButtonFont (TabBarButton&, float height)
+{
+    return { height * 0.6f };
+}
+
 void LookAndFeel_V2::drawTabButtonText (TabBarButton& button, Graphics& g, bool isMouseOver, bool isMouseDown)
 {
     const Rectangle<float> area (button.getTextArea().toFloat());
@@ -2167,15 +2200,15 @@ void LookAndFeel_V2::drawTabButtonText (TabBarButton& button, Graphics& g, bool 
     if (button.getTabbedButtonBar().isVertical())
         std::swap (length, depth);
 
-    Font font (depth * 0.6f);
+    Font font (getTabButtonFont (button, depth));
     font.setUnderline (button.hasKeyboardFocus (false));
 
     AffineTransform t;
 
     switch (button.getTabbedButtonBar().getOrientation())
     {
-        case TabbedButtonBar::TabsAtLeft:   t = t.rotated (float_Pi * -0.5f).translated (area.getX(), area.getBottom()); break;
-        case TabbedButtonBar::TabsAtRight:  t = t.rotated (float_Pi *  0.5f).translated (area.getRight(), area.getY()); break;
+        case TabbedButtonBar::TabsAtLeft:   t = t.rotated (MathConstants<float>::pi * -0.5f).translated (area.getX(), area.getBottom()); break;
+        case TabbedButtonBar::TabsAtRight:  t = t.rotated (MathConstants<float>::pi *  0.5f).translated (area.getRight(), area.getY()); break;
         case TabbedButtonBar::TabsAtTop:
         case TabbedButtonBar::TabsAtBottom: t = t.translated (area.getX(), area.getY()); break;
         default:                            jassertfalse; break;
@@ -2314,26 +2347,33 @@ void LookAndFeel_V2::drawTableHeaderBackground (Graphics& g, TableHeaderComponen
     Rectangle<int> area (header.getLocalBounds());
     area.removeFromTop (area.getHeight() / 2);
 
-    g.setGradientFill (ColourGradient (Colour (0xffe8ebf9), 0.0f, (float) area.getY(),
-                                       Colour (0xfff6f8f9), 0.0f, (float) area.getBottom(),
+    auto backgroundColour = header.findColour (TableHeaderComponent::backgroundColourId);
+
+    g.setGradientFill (ColourGradient (backgroundColour,
+                                       0.0f, (float) area.getY(),
+                                       backgroundColour.withMultipliedSaturation (.5f),
+                                       0.0f, (float) area.getBottom(),
                                        false));
     g.fillRect (area);
 
-    g.setColour (Colour (0x33000000));
+    g.setColour (header.findColour (TableHeaderComponent::outlineColourId));
     g.fillRect (area.removeFromBottom (1));
 
     for (int i = header.getNumColumns (true); --i >= 0;)
         g.fillRect (header.getColumnPosition (i).removeFromRight (1));
 }
 
-void LookAndFeel_V2::drawTableHeaderColumn (Graphics& g, const String& columnName, int /*columnId*/,
+void LookAndFeel_V2::drawTableHeaderColumn (Graphics& g, TableHeaderComponent& header,
+                                            const String& columnName, int /*columnId*/,
                                             int width, int height, bool isMouseOver, bool isMouseDown,
                                             int columnFlags)
 {
+    auto highlightColour = header.findColour (TableHeaderComponent::highlightColourId);
+
     if (isMouseDown)
-        g.fillAll (Colour (0x8899aadd));
+        g.fillAll (highlightColour);
     else if (isMouseOver)
-        g.fillAll (Colour (0x5599aadd));
+        g.fillAll (highlightColour.withMultipliedAlpha (0.625f));
 
     Rectangle<int> area (width, height);
     area.reduce (4, 0);
@@ -2349,7 +2389,7 @@ void LookAndFeel_V2::drawTableHeaderColumn (Graphics& g, const String& columnNam
         g.fillPath (sortArrow, sortArrow.getTransformToScaleToFit (area.removeFromRight (height / 2).reduced (2).toFloat(), true));
     }
 
-    g.setColour (Colours::black);
+    g.setColour (header.findColour (TableHeaderComponent::textColourId));
     g.setFont (Font (height * 0.5f, Font::bold));
     g.drawFittedText (columnName, area, Justification::centredLeft, 1);
 }
@@ -2450,6 +2490,11 @@ Rectangle<int> LookAndFeel_V2::getPropertyComponentContentPosition (PropertyComp
     return Rectangle<int> (textW, 1, component.getWidth() - textW - 1, component.getHeight() - 3);
 }
 
+int LookAndFeel_V2::getPropertyPanelSectionHeaderHeight (const String& sectionTitle)
+{
+    return sectionTitle.isEmpty() ? 0 : 22;
+}
+
 //==============================================================================
 void LookAndFeel_V2::drawCallOutBoxBackground (CallOutBox& box, Graphics& g,
                                                const Path& path, Image& cachedImage)
@@ -2484,7 +2529,7 @@ AttributedString LookAndFeel_V2::createFileChooserHeaderText (const String& titl
     AttributedString s;
     s.setJustification (Justification::centred);
 
-    const Colour colour (findColour (FileChooserDialogBox::titleTextColourId));
+    auto colour = findColour (FileChooserDialogBox::titleTextColourId);
     s.append (title + "\n\n", Font (17.0f, Font::bold), colour);
     s.append (instructions, Font (14.0f), colour);
 
@@ -2492,13 +2537,13 @@ AttributedString LookAndFeel_V2::createFileChooserHeaderText (const String& titl
 }
 
 void LookAndFeel_V2::drawFileBrowserRow (Graphics& g, int width, int height,
-                                         const String& filename, Image* icon,
+                                         const File&, const String& filename, Image* icon,
                                          const String& fileSizeDescription,
                                          const String& fileTimeDescription,
-                                         const bool isDirectory, const bool isItemSelected,
-                                         const int /*itemIndex*/, DirectoryContentsDisplayComponent& dcc)
+                                         bool isDirectory, bool isItemSelected,
+                                         int /*itemIndex*/, DirectoryContentsDisplayComponent& dcc)
 {
-    Component* const fileListComp = dynamic_cast<Component*> (&dcc);
+    auto fileListComp = dynamic_cast<Component*> (&dcc);
 
     if (isItemSelected)
         g.fillAll (fileListComp != nullptr ? fileListComp->findColour (DirectoryContentsDisplayComponent::highlightColourId)
@@ -2515,14 +2560,19 @@ void LookAndFeel_V2::drawFileBrowserRow (Graphics& g, int width, int height,
     }
     else
     {
-        if (const Drawable* d = isDirectory ? getDefaultFolderImage()
-                                            : getDefaultDocumentFileImage())
+        if (auto* d = isDirectory ? getDefaultFolderImage()
+                                  : getDefaultDocumentFileImage())
             d->drawWithin (g, Rectangle<float> (2.0f, 2.0f, x - 4.0f, height - 4.0f),
                            RectanglePlacement::centred | RectanglePlacement::onlyReduceInSize, 1.0f);
     }
 
-    g.setColour (fileListComp != nullptr ? fileListComp->findColour (DirectoryContentsDisplayComponent::textColourId)
-                                         : findColour (DirectoryContentsDisplayComponent::textColourId));
+    if (isItemSelected)
+        g.setColour (fileListComp != nullptr ? fileListComp->findColour (DirectoryContentsDisplayComponent::highlightedTextColourId)
+                                             : findColour (DirectoryContentsDisplayComponent::highlightedTextColourId));
+    else
+        g.setColour (fileListComp != nullptr ? fileListComp->findColour (DirectoryContentsDisplayComponent::textColourId)
+                                             : findColour (DirectoryContentsDisplayComponent::textColourId));
+
     g.setFont (height * 0.7f);
 
     if (width > 450 && ! isDirectory)
@@ -2559,10 +2609,10 @@ void LookAndFeel_V2::drawFileBrowserRow (Graphics& g, int width, int height,
 
 Button* LookAndFeel_V2::createFileBrowserGoUpButton()
 {
-    DrawableButton* goUpButton = new DrawableButton ("up", DrawableButton::ImageOnButtonBackground);
+    auto goUpButton = new DrawableButton ("up", DrawableButton::ImageOnButtonBackground);
 
     Path arrowPath;
-    arrowPath.addArrow (Line<float> (50.0f, 100.0f, 50.0f, 0.0f), 40.0f, 100.0f, 50.0f);
+    arrowPath.addArrow ({ 50.0f, 100.0f, 50.0f, 0.0f }, 40.0f, 100.0f, 50.0f);
 
     DrawablePath arrowImage;
     arrowImage.setFill (Colours::black.withAlpha (0.4f));
@@ -2581,11 +2631,11 @@ void LookAndFeel_V2::layoutFileBrowserComponent (FileBrowserComponent& browserCo
                                                  Button* goUpButton)
 {
     const int x = 8;
-    int w = browserComp.getWidth() - x - x;
+    auto w = browserComp.getWidth() - x - x;
 
     if (previewComp != nullptr)
     {
-        const int previewWidth = w / 3;
+        auto previewWidth = w / 3;
         previewComp->setBounds (x + w - previewWidth, 0, previewWidth, browserComp.getHeight());
 
         w -= previewWidth + 4;
@@ -2602,7 +2652,7 @@ void LookAndFeel_V2::layoutFileBrowserComponent (FileBrowserComponent& browserCo
 
     y += controlsHeight + 4;
 
-    if (Component* const listAsComp = dynamic_cast<Component*> (fileListComponent))
+    if (auto listAsComp = dynamic_cast<Component*> (fileListComponent))
     {
         listAsComp->setBounds (x, y, w, browserComp.getHeight() - y - bottomSectionHeight);
         y = listAsComp->getBottom() + 4;
@@ -2750,6 +2800,30 @@ void LookAndFeel_V2::drawKeymapChangeButton (Graphics& g, int width, int height,
         g.drawRect (0, 0, width, height);
     }
 }
+//==============================================================================
+Font LookAndFeel_V2::getSidePanelTitleFont (SidePanel&)
+{
+    return Font (18.0f);
+}
+
+Justification LookAndFeel_V2::getSidePanelTitleJustification (SidePanel& panel)
+{
+    return panel.isPanelOnLeft() ? Justification::centredRight
+                                 : Justification::centredLeft;
+}
+
+Path LookAndFeel_V2::getSidePanelDismissButtonShape (SidePanel& panel)
+{
+    Path p;
+    const float size = 10.0f;
+
+    if (panel.isPanelOnLeft())
+        p.addTriangle (size, 0.0f, 0.0f, size * 0.5f, size, size);
+    else
+        p.addTriangle (0.0f, 0.0f, size, size * 0.5f, 0.0f, size);
+
+    return p;
+}
 
 //==============================================================================
 void LookAndFeel_V2::drawBevel (Graphics& g, const int x, const int y, const int width, const int height,
@@ -2874,7 +2948,7 @@ void LookAndFeel_V2::drawGlassPointer (Graphics& g,
     p.lineTo (x, y + diameter * 0.6f);
     p.closeSubPath();
 
-    p.applyTransform (AffineTransform::rotation (direction * (float_Pi * 0.5f), x + diameter * 0.5f, y + diameter * 0.5f));
+    p.applyTransform (AffineTransform::rotation (direction * MathConstants<float>::halfPi, x + diameter * 0.5f, y + diameter * 0.5f));
 
     {
         ColourGradient cg (Colours::white.overlaidWith (colour.withMultipliedAlpha (0.3f)), 0, y,
@@ -2992,3 +3066,5 @@ void LookAndFeel_V2::drawGlassLozenge (Graphics& g,
     g.setColour (colour.darker().withMultipliedAlpha (1.5f));
     g.strokePath (outline, PathStrokeType (outlineThickness));
 }
+
+} // namespace juce

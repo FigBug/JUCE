@@ -1,25 +1,27 @@
 /*
- ==============================================================================
+  ==============================================================================
 
- This file is part of the JUCE library.
- Copyright (c) 2015 - ROLI Ltd.
+   This file is part of the JUCE library.
+   Copyright (c) 2017 - ROLI Ltd.
 
- Permission is granted to use this software under the terms of either:
- a) the GPL v2 (or any later version)
- b) the Affero GPL v3
+   JUCE is an open source library subject to commercial or open-source
+   licensing.
 
- Details of these licenses can be found at: www.gnu.org/licenses
+   By using JUCE, you agree to the terms of both the JUCE 5 End-User License
+   Agreement and JUCE 5 Privacy Policy (both updated and effective as of the
+   27th April 2017).
 
- JUCE is distributed in the hope that it will be useful, but WITHOUT ANY
- WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
- A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+   End User License Agreement: www.juce.com/juce-5-licence
+   Privacy Policy: www.juce.com/juce-5-privacy-policy
 
- ------------------------------------------------------------------------------
+   Or: You may also use this code under the terms of the GPL v3 (see
+   www.gnu.org/licenses).
 
- To release a closed-source product which uses JUCE, commercial licenses are
- available: visit www.juce.com for more information.
+   JUCE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY, AND ALL WARRANTIES, WHETHER
+   EXPRESSED OR IMPLIED, INCLUDING MERCHANTABILITY AND FITNESS FOR PURPOSE, ARE
+   DISCLAIMED.
 
- ==============================================================================
+  ==============================================================================
 */
 
 #include "../JuceLibraryCode/JuceHeader.h"
@@ -55,16 +57,16 @@ public:
 
     void releaseResources() override {}
 
-    void processBlock (AudioSampleBuffer& buffer, MidiBuffer& midi) override
+    void processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi) override
     {
         // the audio buffer in a midi effect will have zero channels!
         jassert (buffer.getNumChannels() == 0);
 
         // however we use the buffer to get timing information
-        const int numSamples = buffer.getNumSamples();
+        auto numSamples = buffer.getNumSamples();
 
         // get note duration
-        const int noteDuration = static_cast<int> (std::ceil (rate * 0.25f * (0.1f + (1.0f - (*speed)))));
+        auto noteDuration = static_cast<int> (std::ceil (rate * 0.25f * (0.1f + (1.0f - (*speed)))));
 
         MidiMessage msg;
         int ignore;
@@ -79,7 +81,7 @@ public:
 
         if ((time + numSamples) >= noteDuration)
         {
-            const int offset = jmax (0, jmin ((int) (noteDuration - time), numSamples - 1));
+            auto offset = jmax (0, jmin ((int) (noteDuration - time), numSamples - 1));
 
             if (lastNoteValue > 0)
             {
@@ -103,8 +105,8 @@ public:
     bool isMidiEffect() const override                  { return true; }
 
     //==============================================================================
-    AudioProcessorEditor* createEditor() override { return new GenericEditor (*this); }
-    bool hasEditor() const override               { return true;   }
+    AudioProcessorEditor* createEditor() override       { return new GenericEditor (*this); }
+    bool hasEditor() const override                     { return true;   }
 
     //==============================================================================
     const String getName() const override               { return "Arpeggiator"; }
@@ -130,9 +132,6 @@ public:
     {
         speed->setValueNotifyingHost (MemoryInputStream (data, static_cast<size_t> (sizeInBytes), false).readFloat());
     }
-
-    //==============================================================================
-
 
 private:
     //==============================================================================
