@@ -29,7 +29,10 @@
 
 //==============================================================================
 class SVGPathDataComponent  : public Component,
-                              private TextEditor::Listener
+                              public FileDragAndDropTarget,
+                              private TextEditor::Listener,
+                              private Button::Listener
+                              
 {
 public:
     SVGPathDataComponent()
@@ -53,6 +56,15 @@ public:
         addAndMakeVisible (resultText);
 
         userText.setText (getLastText());
+
+        addAndMakeVisible (copy);
+        copy.addListener (this);
+    }
+
+    void buttonClicked (Button* b) override
+    {
+        if (b == &copy)
+            SystemClipboard::copyTextToClipboard (resultText.getText());
     }
 
     void textEditorTextChanged (TextEditor&) override
@@ -69,7 +81,12 @@ public:
     {
         getLastText() = userText.getText();
 
-        path = Drawable::parseSVGPath (getLastText().trim().unquoted().trim());
+        String text = getLastText().trim().unquoted().trim();
+
+        path = Drawable::parseSVGPath (text);
+
+        if (path.isEmpty())
+            path = pathFromPoints (text);
 
         String result = "No path generated.. Not a valid SVG path string?";
 
@@ -97,6 +114,9 @@ public:
     void resized() override
     {
         Rectangle<int> r (getLocalBounds().reduced (8));
+
+        copy.setBounds (r.removeFromBottom (30).removeFromLeft (50));
+        r.removeFromBottom (5);
         desc.setBounds (r.removeFromTop (44));
         r.removeFromTop (8);
         userText.setBounds (r.removeFromTop (r.getHeight() / 2));
@@ -107,7 +127,11 @@ public:
 
     void paint (Graphics& g) override
     {
-        g.setColour (findColour (secondaryBackgroundColourId));
+        if (dragOver)
+        {
+            g.setColour (findColour (secondaryBackgroundColourId).brighter());
+            g.fillAll();
+        }
 
         g.setColour (findColour (defaultTextColourId));
         g.fillPath (path, path.getTransformToScaleToFit (previewPathArea.reduced (4).toFloat(), true));
@@ -119,11 +143,73 @@ public:
         resultText.applyFontToAllText (resultText.getFont());
     }
 
+    bool isInterestedInFileDrag (const StringArray& files) override
+    {
+        if (files.size() == 1 && File (files[0]).hasFileExtension  ("svg"))
+            return true;
+        return false;
+    }
+
+    void fileDragEnter (const StringArray&, int, int) override
+    {
+        dragOver = true;
+        repaint();
+    }
+
+    void fileDragExit (const StringArray&) override
+    {
+        dragOver = false;
+        repaint();
+    }
+
+    void filesDropped (const StringArray& files, int, int) override
+    {
+        dragOver = false;
+        repaint();
+
+        File f (files[0]);
+
+        XmlDocument doc (f);
+        if (ScopedPointer<XmlElement> e = doc.getDocumentElement())
+        {
+            if (auto* ePath = e->getChildByName ("path"))
+                userText.setText (ePath->getStringAttribute ("d"), true);
+            else if (auto* ePolygon = e->getChildByName ("polygon"))
+                userText.setText (ePolygon->getStringAttribute ("points"), true);
+        }
+    }
+
+    Path pathFromPoints (String pointsText)
+    {
+        auto points = StringArray::fromTokens (pointsText, " ,", "");
+        points.removeEmptyStrings();
+
+        jassert (points.size() % 2 == 0);
+
+        Path p;
+
+        for (int i = 0; i < points.size() / 2; i++)
+        {
+            auto x = points[i * 2].getFloatValue();
+            auto y = points[i * 2 + 1].getFloatValue();
+
+            if (i == 0)
+                p.startNewSubPath ({ x, y });
+            else
+                p.lineTo ({ x, y });
+        }
+        p.closeSubPath();
+
+        return p;
+    }
+
 private:
     Label desc;
     TextEditor userText, resultText;
     Rectangle<int> previewPathArea;
     Path path;
+    bool dragOver = false;
+    TextButton copy { "Copy" };
 
     String& getLastText()
     {
