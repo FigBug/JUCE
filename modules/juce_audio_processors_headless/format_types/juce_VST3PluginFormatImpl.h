@@ -1292,7 +1292,7 @@ private:
 struct VST3ModuleHandle final
 {
 public:
-    static VST3ModuleHandle create (const File& pluginFile, const PluginDescription& desc)
+    static VST3ModuleHandle create (const File& pluginFile, const PluginDescription& desc, FUnknown* hostContext)
     {
         VST3ModuleHandle result;
         result.handle = RefCountedDllHandle::getHandle (pluginFile.getFullPathName());
@@ -1304,6 +1304,18 @@ public:
 
         if (factory == nullptr)
             return {};
+
+        // Shell plugins (e.g. WaveShell) re-enumerate their factory classes when
+        // the host context is set, shifting every class index. Set it before
+        // searching so the index found here still refers to the same class when
+        // VST3ComponentHolder::initialise() sets the same context again and
+        // instantiates by this index.
+        {
+            VSTComSmartPtr<IPluginFactory3> pf3;
+
+            if (pf3.loadFrom (factory.get()))
+                pf3->setHostContext (hostContext);
+        }
 
         const auto numClasses = factory->countClasses();
         result.classIndex = findClassMatchingDescription (factory, desc);
@@ -3614,7 +3626,7 @@ static std::unique_ptr<AudioPluginInstance> createVST3Instance (VST3PluginFormat
     const ScopedWorkingDirectory scope;
     file.getParentDirectory().setAsCurrentWorkingDirectory();
 
-    const auto module = VST3ModuleHandle::create (file, description);
+    const auto module = VST3ModuleHandle::create (file, description, host->getFUnknown());
 
     if (! module.isValid())
         return nullptr;
