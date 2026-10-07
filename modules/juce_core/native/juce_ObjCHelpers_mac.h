@@ -385,7 +385,19 @@ struct ObjCClass
 private:
     static String getRandomisedName (const char* root)
     {
-        return root + String::toHexString (juce::Random::getSystemRandom().nextInt64());
+        // Random::getSystemRandom() is thread_local, and this runs during the
+        // static initialisation of a dlopen'ed plugin bundle (AppDelegateClass).
+        // In some host processes (plugin scanners that also have PACE-protected
+        // plugins loaded) dyld has not bootstrapped thread-local storage for the
+        // image at that point, and the access aborts with _tlv_bootstrap_error.
+        // A local generator seeded from the clock, a counter and a stack address
+        // is unique enough for a class-name suffix and needs no TLS.
+        static std::atomic<int64> counter { 0 };
+        const auto seed = Time::getHighResolutionTicks()
+                        ^ (int64) (pointer_sized_int) &counter
+                        ^ (counter.fetch_add (1) << 32);
+        Random r (seed);
+        return root + String::toHexString (r.nextInt64());
     }
 
     JUCE_DECLARE_NON_COPYABLE (ObjCClass)
